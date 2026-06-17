@@ -1,7 +1,7 @@
 package org.example.models;
 
 public class User {
-    private int user_id;
+    private long user_id;
     private String username;
     private String email;
     private String passwordHash;
@@ -29,27 +29,32 @@ public class User {
         this.blocked = blocked;
     }
 
-    public int getUser_id() {
+    public long getUser_id() {
         return user_id;
     }
 
     public String getUsername() {
+
         return username;
     }
 
     public String getEmail() {
+
         return email;
     }
 
     public String getPasswordHash() {
+
         return passwordHash;
     }
 
     public String getRole() {
+
         return role;
     }
 
     public String getStatus() {
+
         return status;
     }
 
@@ -58,30 +63,38 @@ public class User {
     }
 
     public void setUser_id(int user_id) {
+
         this.user_id = user_id;
     }
 
     public void setEmail(String email) {
+
         this.email = email;
     }
 
     public void setUsername(String username) {
+
         this.username = username;
     }
 
     public void setPasswordHash(String passwordHash) {
+
         this.passwordHash = passwordHash;
     }
 
     public void setRole(String role) {
+
         this.role = role;
     }
 
     public void setStatus(String status) {
+
         this.status = status;
     }
 
     public void setBlocked(boolean blocked) {
+
         this.blocked = blocked;
     }
 }
+

@@ -39,18 +39,18 @@ public class DatabaseInitializer {
                         PRIMARY KEY(chat_id, user_id),
                         
                         FOREIGN KEY(chat_id)
-                        REFERENCES chats(id)
+                        REFERENCES chats(chat_id)
                         ON DELETE CASCADE,
                         
                         FOREIGN KEY(user_id)
-                        REFERENCES users(id)
+                        REFERENCES users(user_id)
                         ON DELETE CASCADE
                     );
                     """);
 
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS messages (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        message_id INTEGER PRIMARY KEY AUTOINCREMENT,
                         chat_id INTEGER NOT NULL,
                         sender_id INTEGER NOT NULL,
                         content TEXT,
@@ -59,17 +59,17 @@ public class DatabaseInitializer {
                         is_deleted INTEGER DEFAULT 0,
                         
                         FOREIGN KEY(chat_id)
-                        REFERENCES chats(id)
+                        REFERENCES chats(chat_id)
                         ON DELETE CASCADE,
                         
                         FOREIGN KEY(sender_id)
-                        REFERENCES users(id)
+                        REFERENCES users(user_id)
                     );
                     """);
 
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS attachments (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        attachment_id INTEGER PRIMARY KEY AUTOINCREMENT,
                         message_id INTEGER NOT NULL,
                         file_name TEXT NOT NULL,
                         file_path TEXT NOT NULL,
@@ -77,14 +77,14 @@ public class DatabaseInitializer {
                         upload_time DATETIME DEFAULT CURRENT_TIMESTAMP,
                         
                         FOREIGN KEY(message_id)
-                        REFERENCES messages(id)
+                        REFERENCES messages(message_id)
                         ON DELETE CASCADE
                     );
                     """);
 
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS logs (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        log_id INTEGER PRIMARY KEY AUTOINCREMENT,
                         level TEXT NOT NULL,
                         message TEXT NOT NULL,
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
