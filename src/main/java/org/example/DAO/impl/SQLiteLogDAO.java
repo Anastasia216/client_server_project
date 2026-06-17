@@ -1,4 +1,4 @@
-package org.example.DAO.Impl;
+package org.example.DAO.impl;
 
 import org.example.DAO.LogDAO;
 import org.example.database.DBManager;

@@ -1,4 +1,4 @@
-package org.example.DAO.Impl;
+package org.example.DAO.impl;
 import org.example.DAO.ChatDAO;
 import org.example.database.DBManager;
 import org.example.models.Chat;

@@ -1,10 +1,10 @@
-package org.example.Service;
+package org.example.service;
 
 import org.example.DAO.UserDAO;
 import org.example.models.User;
 import org.example.models.UserRole;
 import org.example.models.UserStatus;
-import org.example.Util.PasswordHasher;
+import org.example.util.PasswordHasher;
 import java.util.Optional;
 
 public class AuthService {
