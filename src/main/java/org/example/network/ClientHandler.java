@@ -1,9 +1,6 @@
 package org.example.network;
 
-import org.example.protocol.Decoder;
-import org.example.protocol.Encoder;
-import org.example.protocol.Packet;
-import org.example.protocol.Message;
+import org.example.protocol.*;
 
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -27,46 +24,52 @@ public class ClientHandler implements Runnable {
                 OutputStream out = socket.getOutputStream()
         ) {
             while (!socket.isClosed()) {
-                byte[] headerBase = in.readNBytes(14);
-                if (headerBase.length < 14) {
+                // 1. Читаємо 16 байтів заголовка, як прописано в MessagePacket
+                byte[] headerBase = in.readNBytes(MessagePacket.HEADER_SIZE);
+                if (headerBase.length < MessagePacket.HEADER_SIZE) {
                     break;
                 }
 
+                // wLen лежить у буфері зсувом з 10 по 14 байт
                 int wLen = ByteBuffer.wrap(headerBase, 10, 4).getInt();
 
-                int restSize = 2 + wLen + 2;
+                // Читаємо payload + 2 байти CRC корисного навантаження
+                int restSize = wLen + 2;
                 byte[] restBytes = in.readNBytes(restSize);
                 if (restBytes.length < restSize) {
                     break;
                 }
 
-                byte[] fullPacketData = new byte[14 + restSize];
-                System.arraycopy(headerBase, 0, fullPacketData, 0, 14);
-                System.arraycopy(restBytes, 0, fullPacketData, 14, restSize);
+                // 2. Декодуємо пакет через фабричний метод з MessagePacket
+                MessagePacket requestPacket = MessagePacket.fromBytes(headerBase, restBytes);
+                System.out.println("[HANDLER] Received packet ID: " + requestPacket.getMessageNum());
 
-                Packet requestPacket = Decoder.decode(fullPacketData);
-                System.out.println("[HANDLER] Received packet ID: " + requestPacket.bPktId);
+                Message messageObj = requestPacket.getMessage();
 
+                // 3. Перевірка авторизації через нові геттери
                 if (authorizedUserId == -1 &&
-                        requestPacket.bMsq.cType != CommandType.LOGIN.getId() &&
-                        requestPacket.bMsq.cType != CommandType.REGISTER.getId()) {
-                    Message accessDenied = new Message(100, 0, "ERROR:NOT_AUTHORIZED");
-                    Packet errorPacket = new Packet((byte) 0, requestPacket.bPktId, accessDenied);
-                    out.write(Encoder.encode(errorPacket));
+                        messageObj.getCommandType() != CommandType.LOGIN &&
+                        messageObj.getCommandType() != CommandType.REGISTER) {
+
+                    Message accessDenied = new Message(CommandType.STATUS_ERROR, 0, "ERROR:NOT_AUTHORIZED");
+                    MessagePacket errorPacket = new MessagePacket((byte) 0, requestPacket.getMessageNum(), accessDenied);
+                    out.write(errorPacket.toBytes());
                     out.flush();
                     continue;
                 }
 
-                Message responseMessage = processor.process(requestPacket.bMsq);
+                // 4. Передаємо логіку в процесор
+                Message responseMessage = processor.process(messageObj);
 
-                if (requestPacket.bMsq.cType == CommandType.LOGIN.getId() && responseMessage.message.startsWith("SUCCESS")) {
-                    this.authorizedUserId = responseMessage.bUserId;
+                // Якщо логін успішний — запам'ятовуємо користувача для поточного сокета
+                if (messageObj.getCommandType() == CommandType.LOGIN && responseMessage.getText().startsWith("SUCCESS")) {
+                    this.authorizedUserId = responseMessage.getUserId();
                     System.out.println("[HANDLER] Socket successfully assigned to User ID: " + authorizedUserId);
                 }
 
-                Packet responsePacket = new Packet((byte) 0, requestPacket.bPktId, responseMessage);
-                byte[] responseBytes = Encoder.encode(responsePacket);
-                out.write(responseBytes);
+                // 5. Формуємо відповідь через новий MessagePacket і відправляємо назад
+                MessagePacket responsePacket = new MessagePacket((byte) 0, requestPacket.getMessageNum(), responseMessage);
+                out.write(responsePacket.toBytes());
                 out.flush();
             }
         } catch (Exception e) {
@@ -83,7 +86,7 @@ public class ClientHandler implements Runnable {
                 System.out.println("[HANDLER] Client socket closed successfully.");
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            System.err.println("[HANDLER ERROR] Failed to close socket: " + e.getMessage());
         }
     }
 }

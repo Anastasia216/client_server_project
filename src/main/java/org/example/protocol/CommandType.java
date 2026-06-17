@@ -1,4 +1,4 @@
-package org.example.Protocol;
+package org.example.protocol;
 
 public enum CommandType {
     LOGIN(1001),

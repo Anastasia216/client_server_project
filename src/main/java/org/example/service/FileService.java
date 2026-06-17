@@ -1,4 +1,4 @@
-package org.example.Service;
+package org.example.service;
 
 import org.example.DAO.AttachmentDAO;
 import org.example.models.Attachment;
