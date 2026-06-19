@@ -34,7 +34,26 @@ public class MessageService {
             messageDAO.save(message);
         }
     }
-    public String getChatHistoryRaw(int chatId) {
+    public void saveMessage(long chatId, long senderId, String text){
+        if (text == null || text.trim().isEmpty()){
+            return;
+        }
+        Message message = new Message();
+        message.setChatId(chatId);
+        message.setSenderId(senderId);
+        message.setContent(text.trim());
+        message.setSentAt(java.time.LocalDateTime.now());
+        message.setStatus(MessageStatus.SENT.name());
+        message.setType(MessageType.TEXT);
+        message.setDeleted(false);
+
+        messageDAO.save(message);
+    }
+    public String getHistory(long chatId){
+        List<org.example.models.Message>messages = messageDAO.findByChatId(chatId);
+        return messages.stream().map(m -> m.getSenderId() + ":" + m.getContent()).collect(java.util.stream.Collectors.joining("/n"));
+    }
+    public String getChatHistoryRaw(long chatId) {
         List<Message> history = messageDAO.findByChatId(chatId);
         return history.stream().map(Message::getContent).collect(Collectors.joining("\n"));
     }
