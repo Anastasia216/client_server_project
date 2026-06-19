@@ -5,6 +5,7 @@ public enum CommandType {
     REGISTER(1002),
     SEND_MESSAGE(2001),
     GET_CHAT_HISTORY(2002),
+    SEND_FILE(2003),
     CREATE_CHAT(3001),
     ADD_USER_TO_CHAT(3002),
     BLOCK_USER(4001),
