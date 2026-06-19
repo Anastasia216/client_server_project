@@ -1,13 +1,15 @@
 package org.example.network;
 
-import org.example.DAO.impl.SQLiteMessageDAO;
-import org.example.DAO.impl.SQLiteUserDAO;
+import org.example.DAO.impl.*;
 import org.example.models.User;
+import org.example.models.Chat;
 import org.example.protocol.CommandType;
 import org.example.protocol.Message;
 import org.example.protocol.MessagePacket;
 import org.example.service.AuthService;
 import org.example.service.MessageService;
+import org.example.service.ChatService;
+import org.example.service.FileService;
 
 import java.util.List;
 import java.util.Optional;
@@ -15,10 +17,14 @@ import java.util.Optional;
 public class Processor {
     private final AuthService authService;
     private final MessageService messageService;
+    private final ChatService chatService;
+    private final FileService fileService;
 
     public Processor() {
         this.authService = new AuthService(new SQLiteUserDAO());
         this.messageService = new MessageService(new SQLiteMessageDAO());
+        this.chatService = new ChatService(new SQLiteChatDAO(), new SQLiteChatMemberDAO());
+        this.fileService = new FileService(new SQLiteAttachmentDAO());
     }
 
     public synchronized Message process(Message message) {
@@ -33,7 +39,7 @@ public class Processor {
                     Optional<User> userOpt = authService.loginFromRaw(message.getText());
                     if (userOpt.isPresent()) {
                         User user = userOpt.get();
-                        System.out.println("[PROCESSOR]\n" + "Authorization successful for: " + user.getUsername());
+                        System.out.println("[PROCESSOR] Authorization successful for: " + user.getUsername());
                         return new Message(CommandType.STATUS_OK, (int) user.getUser_id(), "SUCCESS;" + user.getRole());
                     } else {
                         return new Message(CommandType.STATUS_ERROR, 0, "ERROR:INVALID_USERNAME_OR_PASSWORD_OR_BLOCKED");
@@ -43,7 +49,7 @@ public class Processor {
                 case REGISTER -> {
                     boolean success = authService.registerFromRaw(message.getText());
                     if (success) {
-                        System.out.println("[PROCESSOR]\n" + "The new user has been successfully registered.");
+                        System.out.println("[PROCESSOR] The new user has been successfully registered.");
                         return new Message(CommandType.STATUS_OK, 0, "SUCCESS:REGISTRATION_COMPLETED");
                     } else {
                         return new Message(CommandType.STATUS_ERROR, 0, "ERROR:USERNAME_OR_EMAIL_ALREADY_EXISTS_OR_INVALID");
@@ -61,7 +67,7 @@ public class Processor {
                         int receiverId = Integer.parseInt(tokens[1]);
                         String textContent = tokens[2];
 
-                        messageService.sendMessageFromRaw(message.getUserId(), message.getText());
+                        messageService.saveMessage(chatId, message.getUserId(), textContent);
 
                         if (receiverId != 0) {
                             //приватне
@@ -84,16 +90,15 @@ public class Processor {
                                 // виключаємо автора
                                 if (memberId == message.getUserId()) continue;
 
-                                ClientHandler memberHandler = ClientRegistry.getHandler(memberId);
+                                ClientHandler memberHandler = ClientRegistry.getHandler((int) memberId);
                                 if (memberHandler != null) {
                                     memberHandler.sendPacket(groupPacket);
                                 }
                             }
-                            System.out.println("[PROCESSOR] Group message from User " + message.getUserId() + " broadcasted to Chat " + chatId);
+                            System.out.println("[PROCESSOR] Group broadcast completed for Chat ID " + chatId);
                         }
 
                         return new Message(CommandType.STATUS_OK, message.getUserId(), "SUCCESS:MESSAGE_PROCESSED");
-
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FAILED_TO_SEND");
                     }
@@ -102,16 +107,14 @@ public class Processor {
                 case CREATE_CHAT -> {
                     try {
                         String chatName = message.getText();
-
                         if (chatName == null || chatName.trim().isEmpty()) {
                             return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:CHAT_NAME_EMPTY");
                         }
 
-                        int simulatedChatId = 999;
+                        Chat createdChat = chatService.createGroup(chatName, message.getUserId());
+                        System.out.println("[PROCESSOR] Group chat '" + chatName + "' created with ID: " + createdChat.getId());
 
-                        System.out.println("[PROCESSOR] Group chat '" + chatName + "' created by User ID " + message.getUserId());
-                        return new Message(CommandType.STATUS_OK, message.getUserId(), "SUCCESS:CHAT_CREATED;ID=" + simulatedChatId);
-
+                        return new Message(CommandType.STATUS_OK, message.getUserId(), "SUCCESS:CHAT_CREATED;ID=" + createdChat.getId());
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FAILED_TO_CREATE_CHAT");
                     }
@@ -127,9 +130,10 @@ public class Processor {
                         int chatId = Integer.parseInt(tokens[0]);
                         int userToAddId = Integer.parseInt(tokens[1]);
 
-                        System.out.println("[PROCESSOR] User " + userToAddId + " added to Chat " + chatId + " by User " + message.getUserId());
-                        return new Message(CommandType.STATUS_OK, message.getUserId(), "SUCCESS:USER_ADDED_TO_CHAT");
+                        chatService.addUserToChat(chatId, userToAddId);
 
+                        System.out.println("[PROCESSOR] User " + userToAddId + " added to Chat " + chatId);
+                        return new Message(CommandType.STATUS_OK, message.getUserId(), "SUCCESS:USER_ADDED_TO_CHAT");
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FAILED_TO_ADD_USER");
                     }
@@ -138,12 +142,10 @@ public class Processor {
                 case GET_CHAT_HISTORY -> {
                     try {
                         int chatId = Integer.parseInt(message.getText());
+                        String historyData = messageService.getHistory(chatId);
 
-                        String simulatedHistory = "User1: Hello!;User2: Hi there!;User1: How is the Java project going?";
-
-                        System.out.println("[PROCESSOR] History requested for Chat ID " + chatId + " by User " + message.getUserId());
-                        return new Message(CommandType.STATUS_OK, message.getUserId(), simulatedHistory);
-
+                        System.out.println("[PROCESSOR] History retrieved for Chat ID " + chatId);
+                        return new Message(CommandType.STATUS_OK, message.getUserId(), historyData);
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FAILED_TO_LOAD_HISTORY");
                     }
@@ -165,12 +167,16 @@ public class Processor {
 
                         java.io.File uploadDir = new java.io.File("uploads");
                         if (!uploadDir.exists()) {
-                            uploadDir.mkdirs();
+                            boolean created = uploadDir.mkdirs();
+                            if (created) {
+                                System.out.println("[SERVER] Uploads directory created successfully.");
+                            }
                         }
-
                         java.io.File serverFile = new java.io.File(uploadDir, System.currentTimeMillis() + "_" + fileName);
                         java.nio.file.Files.write(serverFile.toPath(), fileBytes);
-                        System.out.println("[PROCESSOR] File saved on server storage: " + serverFile.getAbsolutePath());
+                        System.out.println("[PROCESSOR] File written on disk: " + serverFile.getAbsolutePath());
+
+                        fileService.registerAttachment(0, fileName, serverFile.getAbsolutePath(), fileBytes.length);
 
                         ClientHandler receiverHandler = ClientRegistry.getHandler(receiverId);
                         if (receiverHandler != null) {
@@ -179,11 +185,10 @@ public class Processor {
                             MessagePacket filePacket = new MessagePacket((byte) 0, System.currentTimeMillis(), fileMessage);
 
                             receiverHandler.sendPacket(filePacket);
-                            System.out.println("[PROCESSOR] File forwarded in real-time to User " + receiverId);
+                            System.out.println("[PROCESSOR] File packet routed to active connection user: " + receiverId);
                         }
 
                         return new Message(CommandType.STATUS_OK, message.getUserId(), "SUCCESS:FILE_TRANSFER_COMPLETED");
-
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FILE_UPLOAD_FAILED");
                     }
@@ -192,16 +197,17 @@ public class Processor {
                 case BLOCK_USER -> {
                     try {
                         int userIdToBlock = Integer.parseInt(message.getText());
-                        System.out.println("[ADMIN ACTION] User ID " + userIdToBlock + " has been blocked in the database.");
+
+                        authService.BlockUser(userIdToBlock);
+                        System.out.println("[ADMIN ACTION] User ID " + userIdToBlock + " flagged as blocked.");
 
                         ClientHandler victimHandler = ClientRegistry.getHandler(userIdToBlock);
                         if (victimHandler != null) {
                             victimHandler.forceDisconnect();
-                            System.out.println("[ADMIN ACTION] Active session for User ID " + userIdToBlock + " was forcefully terminated.");
+                            System.out.println("[ADMIN ACTION] Terminated socket session for banned user ID: " + userIdToBlock);
                         }
 
                         return new Message(CommandType.STATUS_OK, message.getUserId(), "SUCCESS:USER_BLOCKED");
-
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FAILED_TO_BLOCK_USER");
                     }

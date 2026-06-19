@@ -75,6 +75,8 @@ public class ClientHandler implements Runnable {
                     this.authorizedUserId = responseMessage.getUserId();
                     System.out.println("[HANDLER] Socket successfully assigned to User ID: " + authorizedUserId);
                     ClientRegistry.addClient(this.authorizedUserId, this);
+
+                    authService.updateStatus(authorizedUserId, "ONLINE");
                 }
 
                 MessagePacket responsePacket = new MessagePacket((byte) 0, requestPacket.getMessageNum(), responseMessage);
@@ -86,6 +88,7 @@ public class ClientHandler implements Runnable {
         } finally {
             if (authorizedUserId != -1) {
                 ClientRegistry.removeClient(authorizedUserId);
+                authService.updateStatus(authorizedUserId, "OFFLINE");
             }
             closeSocket();
         }
