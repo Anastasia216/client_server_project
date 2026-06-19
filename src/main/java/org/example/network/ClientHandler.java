@@ -1,6 +1,8 @@
 package org.example.network;
 
 import org.example.protocol.*;
+import org.example.service.AuthService;
+import org.example.DAO.impl.SQLiteUserDAO;
 
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -11,10 +13,23 @@ import java.nio.ByteBuffer;
 public class ClientHandler implements Runnable {
     private final Socket socket;
     private static final Processor processor = new Processor();
+    private final AuthService authService = new AuthService(new SQLiteUserDAO());
     private int authorizedUserId = -1;
+    private OutputStream out;
 
     public ClientHandler(Socket socket) {
         this.socket = socket;
+    }
+    public synchronized void sendPacket(MessagePacket packet) {
+        try {
+            if (out != null && !socket.isClosed()) {
+                byte[] bytesToSend = packet.toBytes();
+                out.write(bytesToSend);
+                out.flush();
+            }
+        } catch (IOException e) {
+            System.err.println("[HANDLER ERROR] Failed to send packet to user ID " + authorizedUserId + ": " + e.getMessage());
+        }
     }
 
     @Override
@@ -23,30 +38,26 @@ public class ClientHandler implements Runnable {
                 InputStream in = socket.getInputStream();
                 OutputStream out = socket.getOutputStream()
         ) {
+            this.out = out;
             while (!socket.isClosed()) {
-                // 1. Читаємо 16 байтів заголовка, як прописано в MessagePacket
                 byte[] headerBase = in.readNBytes(MessagePacket.HEADER_SIZE);
                 if (headerBase.length < MessagePacket.HEADER_SIZE) {
                     break;
                 }
 
-                // wLen лежить у буфері зсувом з 10 по 14 байт
                 int wLen = ByteBuffer.wrap(headerBase, 10, 4).getInt();
 
-                // Читаємо payload + 2 байти CRC корисного навантаження
                 int restSize = wLen + 2;
                 byte[] restBytes = in.readNBytes(restSize);
                 if (restBytes.length < restSize) {
                     break;
                 }
 
-                // 2. Декодуємо пакет через фабричний метод з MessagePacket
                 MessagePacket requestPacket = MessagePacket.fromBytes(headerBase, restBytes);
                 System.out.println("[HANDLER] Received packet ID: " + requestPacket.getMessageNum());
 
                 Message messageObj = requestPacket.getMessage();
 
-                // 3. Перевірка авторизації через нові геттери
                 if (authorizedUserId == -1 &&
                         messageObj.getCommandType() != CommandType.LOGIN &&
                         messageObj.getCommandType() != CommandType.REGISTER) {
@@ -58,16 +69,14 @@ public class ClientHandler implements Runnable {
                     continue;
                 }
 
-                // 4. Передаємо логіку в процесор
                 Message responseMessage = processor.process(messageObj);
 
-                // Якщо логін успішний — запам'ятовуємо користувача для поточного сокета
                 if (messageObj.getCommandType() == CommandType.LOGIN && responseMessage.getText().startsWith("SUCCESS")) {
                     this.authorizedUserId = responseMessage.getUserId();
                     System.out.println("[HANDLER] Socket successfully assigned to User ID: " + authorizedUserId);
+                    ClientRegistry.addClient(this.authorizedUserId, this);
                 }
 
-                // 5. Формуємо відповідь через новий MessagePacket і відправляємо назад
                 MessagePacket responsePacket = new MessagePacket((byte) 0, requestPacket.getMessageNum(), responseMessage);
                 out.write(responsePacket.toBytes());
                 out.flush();
@@ -75,8 +84,17 @@ public class ClientHandler implements Runnable {
         } catch (Exception e) {
             System.out.println("[HANDLER] Error or client disconnected: " + e.getMessage());
         } finally {
+            if (authorizedUserId != -1) {
+                ClientRegistry.removeClient(authorizedUserId);
+            }
             closeSocket();
         }
+    }
+
+    public void forceDisconnect() {
+        Message banMessage = new Message(CommandType.STATUS_ERROR, 0, "ERROR:YOU_ARE_BLOCKED_BY_ADMIN");
+        sendPacket(new MessagePacket((byte) 0, 0, banMessage));
+        closeSocket();
     }
 
     private void closeSocket() {
