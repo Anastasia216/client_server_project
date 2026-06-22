@@ -51,4 +51,17 @@ public class AuthService {
         }
         return Optional.empty();
     }
+    public void updateStatus(long userId, String status){
+        userDAO.findById(userId).ifPresent(user -> {
+            user.setStatus(status);
+            userDAO.update(user);
+        });
+    }
+    public void BlockUser(long userId){
+        userDAO.findById(userId).ifPresent(user -> {
+            user.setBlocked(true);
+            user.setStatus(org.example.models.UserStatus.OFFLINE.name());
+            userDAO.update(user);
+        });
+    }
 }

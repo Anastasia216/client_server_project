@@ -56,8 +56,16 @@ public class ChatService {
     public List<ChatMember> getChatMembers(long chatId) {
         return chatMemberDAO.findByChatId(chatId);
     }
-
+    public List<Long> getChatMemberIds(long chatId){
+        return chatMemberDAO.findByChatId(chatId).stream().map(ChatMember::getUserId).collect(java.util.stream.Collectors.toList());
+    }
     public void deleteChat(long chatId) {
         chatDAO.delete(chatId);
+    }
+    public Chat createGroup(String chatName, long creatorId) {
+        return createChat(chatName, org.example.models.ChatType.GROUP, creatorId);
+    }
+    public boolean addUserToChat(long chatId, long userId){
+        return addMemberToChat(chatId, userId, org.example.models.ChatRole.USER);
     }
 }

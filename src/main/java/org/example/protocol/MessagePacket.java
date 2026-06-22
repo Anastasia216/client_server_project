@@ -74,7 +74,6 @@ public class MessagePacket {
 
         int commandId = payloadBuf.getInt();
         int userId = payloadBuf.getInt();
-
         int textLength = wLen - 8;
         byte[] textBytes = new byte[textLength];
         payloadBuf.get(textBytes);

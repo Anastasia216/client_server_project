@@ -1,18 +1,19 @@
 package org.example.network;
 
-import org.example.DAO.impl.SQLiteMessageDAO;
-import org.example.DAO.impl.SQLiteUserDAO;
-import org.example.DAO.impl.SQLiteChatDAO;
-import org.example.DAO.impl.SQLiteChatMemberDAO;
+import org.example.models.User;
 import org.example.models.Chat;
 import org.example.models.ChatMember;
 import org.example.models.ChatType;
 import org.example.models.ChatRole;
-import org.example.models.User;
+import org.example.DAO.impl.*;
+
 import org.example.protocol.CommandType;
 import org.example.protocol.Message;
+import org.example.protocol.MessagePacket;
 import org.example.service.AuthService;
 import org.example.service.MessageService;
+import org.example.service.ChatService;
+import org.example.service.FileService;
 
 import java.util.List;
 import java.util.Optional;
@@ -20,10 +21,14 @@ import java.util.Optional;
 public class Processor {
     private final AuthService authService;
     private final MessageService messageService;
+    private final ChatService chatService;
+    private final FileService fileService;
 
     public Processor() {
         this.authService = new AuthService(new SQLiteUserDAO());
         this.messageService = new MessageService(new SQLiteMessageDAO());
+        this.chatService = new ChatService(new SQLiteChatDAO(), new SQLiteChatMemberDAO());
+        this.fileService = new FileService(new SQLiteAttachmentDAO());
     }
 
     public synchronized Message process(Message message, int currentUserId) {
@@ -38,7 +43,7 @@ public class Processor {
                     Optional<User> userOpt = authService.loginFromRaw(message.getText());
                     if (userOpt.isPresent()) {
                         User user = userOpt.get();
-                        System.out.println("[PROCESSOR]\n" + "Authorization successful for: " + user.getUsername());
+                        System.out.println("[PROCESSOR] Authorization successful for: " + user.getUsername());
                         return new Message(CommandType.STATUS_OK, (int) user.getUser_id(), "SUCCESS;" + user.getRole());
                     } else {
                         return new Message(CommandType.STATUS_ERROR, 0, "ERROR:INVALID_CREDENTIALS");

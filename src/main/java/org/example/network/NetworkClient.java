@@ -14,10 +14,12 @@ public class NetworkClient {
     private static NetworkClient instance;
     private static final String HOST = "127.0.0.1";
     private static final int PORT = 5001;
+
     private Socket socket;
     private OutputStream out;
     private InputStream in;
     private boolean connected = false;
+    private Object activeController;
 
     private NetworkClient() {}
 
@@ -30,11 +32,16 @@ public class NetworkClient {
 
     public void connect() throws IOException {
         if (connected) return;
+        System.out.println("[NETWORK_CLIENT] Connecting to server at " + HOST + ":" + PORT + "...");
         this.socket = new Socket(HOST, PORT);
         this.out = socket.getOutputStream();
         this.in = socket.getInputStream();
         this.connected = true;
-        System.out.println("[NETWORK_CLIENT] Connected to server.");
+        System.out.println("[NETWORK_CLIENT] Connected to server successfully.");
+        Thread receiverThread = new Thread(new NetworkReceiverThread());
+        receiverThread.setDaemon(true);
+        receiverThread.start();
+        System.out.println("[NETWORK_CLIENT] Background receiver thread sparked successfully.");
     }
 
     public synchronized void sendPacket(MessagePacket packet) {
@@ -42,11 +49,22 @@ public class NetworkClient {
             if (out != null && !socket.isClosed()) {
                 out.write(packet.toBytes());
                 out.flush();
-                System.out.println("[NETWORK_CLIENT] Sent packet: " + packet.getMessage().getCommandType());
+                System.out.println("[NETWORK_CLIENT] Sent packet type: " + packet.getMessage().getCommandType());
             }
         } catch (IOException e) {
             System.err.println("[NETWORK_CLIENT ERROR] Send failed: " + e.getMessage());
         }
+    }
+
+    public void setActiveController(Object controller) {
+        this.activeController = controller;
+        if (controller != null) {
+            System.out.println("[NETWORK_CLIENT] Switched bridge focus to UI Controller: " + controller.getClass().getSimpleName());
+        }
+    }
+
+    public Object getActiveController() {
+        return activeController;
     }
 
     public void sendLoginRequest(String username, String password) {
