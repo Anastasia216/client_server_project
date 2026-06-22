@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Hyperlink?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.PasswordField?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.text.Font?>
+
+<StackPane prefHeight="600.0" prefWidth="800.0" style="-fx-background-color: linear-gradient(to bottom right, #f4f7f6, #e0eafc);" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.frontend.LoginController">
+   <children>
+      <VBox alignment="CENTER" maxHeight="-Infinity" maxWidth="-Infinity" prefHeight="450.0" prefWidth="400.0" spacing="20.0" style="-fx-background-color: #ffffff; -fx-background-radius: 15; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.1), 15, 0, 0, 5);">
+         <padding>
+            <Insets bottom="40.0" left="40.0" right="40.0" top="40.0" />
+         </padding>
+
+         <Label text="Sign In" textFill="#333333">
+            <font>
+               <Font name="System Bold" size="28.0" />
+            </font>
+            <VBox.margin>
+               <Insets bottom="10.0" />
+            </VBox.margin>
+         </Label>
+
+         <TextField fx:id="loginField" prefHeight="45.0" promptText="Username" style="-fx-background-radius: 8; -fx-border-radius: 8; -fx-border-color: #dcdcdc; -fx-background-color: #fafafa;">
+            <font>
+               <Font size="14.0" />
+            </font>
+         </TextField>
+
+         <PasswordField fx:id="passwordField" prefHeight="45.0" promptText="Password" style="-fx-background-radius: 8; -fx-border-radius: 8; -fx-border-color: #dcdcdc; -fx-background-color: #fafafa;">
+            <font>
+               <Font size="14.0" />
+            </font>
+         </PasswordField>
+
+         <Button fx:id="signInButton" onAction="#handleSignIn" prefHeight="45.0" prefWidth="Infinity" style="-fx-background-color: #007bff; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 8; -fx-cursor: hand;" text="Sign In">
+            <font>
+               <Font size="15.0" />
+            </font>
+            <VBox.margin>
+               <Insets top="5.0" />
+            </VBox.margin>
+         </Button>
+
+         <Hyperlink onAction="#switchToRegister" style="-fx-border-color: transparent;" text="Create a new account" textFill="#007bff">
+            <font>
+               <Font size="13.0" />
+            </font>
+         </Hyperlink>
+
+         <Label fx:id="errorLabel" textFill="#dc3545" wrapText="true" />
+      </VBox>
+   </children>
+</StackPane>

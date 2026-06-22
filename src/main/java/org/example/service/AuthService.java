@@ -14,26 +14,25 @@ public class AuthService {
         this.userDAO = userDAO;
     }
 
-    // "username;email;password"
-    public boolean registerFromRaw(String rawData) {
+    public Optional<User> registerFromRaw(String rawData) {
         String[] parts = rawData.split(";");
-        if (parts.length < 3) return false;
+        if (parts.length < 3) return Optional.empty();
 
         String username = parts[0];
-        String email = parts[1];
+        String phone = parts[1];
         String password = parts[2];
 
-        if (userDAO.findByUsername(username).isPresent()) {
-            return false;
+        if (userDAO.findByUsername(username).isPresent() || userDAO.findByPhone(phone).isPresent()) {
+            return Optional.empty();
         }
 
-        User user = new User(0, username, email, PasswordHasher.hash(password),
-                UserRole.USER.name(), UserStatus.OFFLINE.name(), false);
-        userDAO.save(user);
-        return true;
+        User user = new User(0, username, phone, PasswordHasher.hash(password),
+                UserRole.USER.name(), UserStatus.ONLINE.name(), false);
+
+        user = userDAO.save(user);
+        return Optional.of(user);
     }
 
-    // "username;password"
     public Optional<User> loginFromRaw(String rawData) {
         String[] parts = rawData.split(";");
         if (parts.length < 2) return Optional.empty();

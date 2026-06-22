@@ -23,12 +23,9 @@ public class ChatService {
         Chat chat = new Chat();
         chat.setName(name);
         chat.setType(type);
-
         Chat savedChat = chatDAO.save(chat);
-
         ChatMember creator = new ChatMember(savedChat.getId(), creatorId, ChatRole.ADMIN);
         chatMemberDAO.addMember(creator);
-
         return savedChat;
     }
 

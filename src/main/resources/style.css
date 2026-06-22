@@ -1,0 +1,214 @@
+/* =========================================
+   GLOBAL TYPOGRAPHY FIXES (Anti-aliasing)
+   ========================================= */
+.root {
+    /* Using system font for best OS compatibility and rendering */
+    -fx-font-family: system, -apple-system, "Segoe UI", sans-serif;
+    -fx-font-smoothing-type: lcd; /* Helps with pixelation on desktop monitors */
+    -fx-font-size: 14px;
+}
+
+/* =========================================
+   LOGIN / REGISTRATION PAGE
+   ========================================= */
+.title-label {
+    -fx-font-size: 28px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #0F172A;
+}
+
+.subtitle-label {
+    -fx-font-size: 15px;
+    -fx-text-fill: #64748B;
+}
+
+/* Thicker Input Fields */
+.input-field {
+    -fx-background-color: #FFFFFF;
+    -fx-border-color: #CBD5E1;
+    -fx-border-radius: 10;
+    -fx-background-radius: 10;
+    -fx-padding: 14 18 14 18; /* Increased top/bottom padding for thickness */
+    -fx-font-size: 15px;
+    -fx-text-fill: #334155;
+    -fx-prompt-text-fill: #94A3B8;
+}
+.input-field:focused {
+    -fx-border-color: #3B82F6;
+    -fx-border-width: 2;
+    -fx-effect: dropshadow(three-pass-box, rgba(59, 130, 246, 0.2), 10, 0, 0, 0);
+}
+
+/* Big Action Button */
+.primary-button {
+    -fx-background-color: #3B82F6;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-font-size: 16px;
+    -fx-padding: 14; /* Taller button */
+    -fx-background-radius: 10;
+    -fx-cursor: hand;
+}
+.primary-button:hover {
+    -fx-background-color: #2563EB;
+}
+
+.link-text {
+    -fx-text-fill: #3B82F6;
+    -fx-font-size: 15px;
+    -fx-underline: false;
+    -fx-padding: 0;
+}
+.link-text:hover {
+    -fx-underline: true;
+}
+.link-text:focused {
+    -fx-border-color: transparent;
+}
+
+.error-label {
+    -fx-text-fill: #EF4444;
+    -fx-font-weight: bold;
+    -fx-font-size: 14px;
+}
+
+/* =========================================
+   CHAT PANELS (Telegram Style)
+   ========================================= */
+.main-split-pane {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+.main-split-pane *.split-pane-divider {
+    -fx-padding: 0 1 0 0;
+    -fx-background-color: #E2E8F0;
+}
+
+/* Left Sidebar */
+.sidebar {
+    -fx-background-color: #F8FAFC;
+}
+
+.app-logo-text {
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #0F172A;
+}
+
+/* Search Bar (Thicker) */
+.search-bar {
+    -fx-background-color: #E2E8F0;
+    -fx-background-radius: 20;
+    -fx-padding: 10 16 10 16;
+    -fx-font-size: 14px;
+    -fx-border-color: transparent;
+    -fx-prompt-text-fill: #64748B;
+}
+.search-bar:focused {
+    -fx-background-color: #FFFFFF;
+    -fx-border-color: #3B82F6;
+}
+
+/* Chat List */
+.chat-list {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+.chat-list .list-cell {
+    -fx-background-color: transparent;
+    -fx-padding: 16 20 16 20; /* Taller chat cells */
+    -fx-font-size: 15px;
+    -fx-border-width: 0 0 1 0;
+    -fx-border-color: #F1F5F9;
+}
+.chat-list .list-cell:hover {
+    -fx-background-color: #E2E8F0;
+    -fx-cursor: hand;
+}
+.chat-list .list-cell:selected {
+    -fx-background-color: #3B82F6;
+    -fx-text-fill: white;
+}
+
+/* Right Chat Area */
+.chat-area {
+    -fx-background-color: #FFFFFF;
+}
+
+/* Chat Header */
+.chat-header {
+    -fx-background-color: #FFFFFF;
+    -fx-border-width: 0 0 1 0;
+    -fx-border-color: #E2E8F0;
+}
+.chat-contact-name {
+    -fx-font-size: 17px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #0F172A;
+}
+.chat-contact-status {
+    -fx-font-size: 13px;
+    -fx-text-fill: #64748B;
+}
+
+/* Messages Area Background */
+.messages-scroll {
+    -fx-background-color: transparent;
+    -fx-background: #F8FAFC;
+    -fx-border-color: transparent;
+}
+.messages-scroll .viewport {
+    -fx-background-color: transparent;
+}
+.messages-container {
+    -fx-background-color: transparent;
+}
+
+/* Input Area at bottom */
+.chat-input-area {
+    -fx-background-color: #FFFFFF;
+    -fx-border-width: 1 0 0 0;
+    -fx-border-color: #E2E8F0;
+}
+
+/* Message Input Field (Thicker) */
+.message-input-field {
+    -fx-background-color: #F1F5F9;
+    -fx-background-radius: 24;
+    -fx-padding: 14 20 14 20; /* Taller input for comfortable typing */
+    -fx-font-size: 15px;
+    -fx-border-color: transparent;
+}
+.message-input-field:focused {
+    -fx-background-color: #FFFFFF;
+    -fx-border-color: #3B82F6;
+    -fx-border-radius: 24;
+}
+
+/* Icons (Attachment, Menu) */
+.icon-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: #64748B;
+    -fx-font-size: 20px;
+    -fx-cursor: hand;
+    -fx-padding: 8;
+    -fx-background-radius: 50%;
+}
+.icon-button:hover {
+    -fx-background-color: #F1F5F9;
+    -fx-text-fill: #3B82F6;
+}
+
+/* Send Message Button */
+.send-button {
+    -fx-background-color: #3B82F6;
+    -fx-text-fill: white;
+    -fx-font-size: 18px;
+    -fx-background-radius: 50%;
+    -fx-min-width: 48px;  /* Slightly bigger send button */
+    -fx-min-height: 48px;
+    -fx-cursor: hand;
+}
+.send-button:hover {
+    -fx-background-color: #2563EB;
+}

@@ -69,9 +69,10 @@ public class ClientHandler implements Runnable {
                     continue;
                 }
 
-                Message responseMessage = processor.process(messageObj);
+                Message responseMessage = processor.process(messageObj, authorizedUserId);
 
-                if (messageObj.getCommandType() == CommandType.LOGIN && responseMessage.getText().startsWith("SUCCESS")) {
+                if ((messageObj.getCommandType() == CommandType.LOGIN || messageObj.getCommandType() == CommandType.REGISTER)
+                        && responseMessage.getText().startsWith("SUCCESS")) {
                     this.authorizedUserId = responseMessage.getUserId();
                     System.out.println("[HANDLER] Socket successfully assigned to User ID: " + authorizedUserId);
                     ClientRegistry.addClient(this.authorizedUserId, this);

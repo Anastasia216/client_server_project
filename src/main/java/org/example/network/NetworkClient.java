@@ -3,10 +3,12 @@ package org.example.network;
 import org.example.protocol.CommandType;
 import org.example.protocol.Message;
 import org.example.protocol.MessagePacket;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
+import java.nio.ByteBuffer;
 
 public class NetworkClient {
     private static NetworkClient instance;
@@ -36,8 +38,6 @@ public class NetworkClient {
         this.in = socket.getInputStream();
         this.connected = true;
         System.out.println("[NETWORK_CLIENT] Connected to server successfully.");
-
-        // Запуск фонового потоку-слухача
         Thread receiverThread = new Thread(new NetworkReceiverThread());
         receiverThread.setDaemon(true);
         receiverThread.start();
@@ -74,8 +74,8 @@ public class NetworkClient {
         sendPacket(packet);
     }
 
-    public void sendRegisterRequest(String username, String email, String password) {
-        String rawData = username + ";" + email + ";" + password;
+    public void sendRegisterRequest(String username, String phone, String password) {
+        String rawData = username + ";" + phone + ";" + password;
         Message registerMessage = new Message(CommandType.REGISTER, 0, rawData);
         MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), registerMessage);
         sendPacket(packet);
@@ -88,31 +88,67 @@ public class NetworkClient {
         sendPacket(packet);
     }
 
-    public void sendFileRequest(int chatId, int receiverId, String fileName, byte[] fileBytes, int currentUserId) {
-        String base64Data = java.util.Base64.getEncoder().encodeToString(fileBytes);
-        String rawData = chatId + ";" + receiverId + ";" + fileName + ";" + base64Data;
-        Message fileMessage = new Message(CommandType.SEND_FILE, currentUserId, rawData);
-        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), fileMessage);
+    public void sendFileMessage(int chatId, String fileName, String base64Data) {
+        String rawData = chatId + ";" + fileName + ";" + base64Data;
+        Message messageMsg = new Message(CommandType.SEND_FILE, 0, rawData);
+        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), messageMsg);
         sendPacket(packet);
     }
 
-    public void sendGetHistoryRequest(int chatId, int currentUserId) {
-        String rawData = String.valueOf(chatId);
-        Message historyMessage = new Message(CommandType.GET_CHAT_HISTORY, currentUserId, rawData);
-        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), historyMessage);
+    public void sendDownloadFileRequest(long messageId) {
+        Message req = new Message(CommandType.DOWNLOAD_FILE, 0, String.valueOf(messageId));
+        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), req);
         sendPacket(packet);
     }
 
-    public void sendBlockUserRequest(int userIdToBlock, int adminUserId) {
-        String rawData = String.valueOf(userIdToBlock);
-        Message blockMessage = new Message(CommandType.BLOCK_USER, adminUserId, rawData);
-        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), blockMessage);
+    public void sendSearchRequest(String query) {
+        Message searchMessage = new Message(CommandType.SEARCH, 0, query);
+        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), searchMessage);
         sendPacket(packet);
     }
 
-    public InputStream getInputStream() { return in; }
-    public Socket getSocket() { return socket; }
-    public boolean isConnected() { return connected; }
+    public void sendGetChatsRequest() {
+        Message requestMessage = new Message(CommandType.GET_CHATS, 0, "REQUEST_CHATS");
+        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), requestMessage);
+        sendPacket(packet);
+    }
+
+    public void sendGetChatHistoryRequest(String chatName) {
+        Message req = new Message(CommandType.GET_CHAT_HISTORY, 0, chatName);
+        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), req);
+        sendPacket(packet);
+    }
+
+    public void sendGetContactsRequest() {
+        Message req = new Message(CommandType.GET_CONTACTS, 0, "REQUEST_CONTACTS");
+        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), req);
+        sendPacket(packet);
+    }
+
+    public void sendCreateGroupRequest(String groupName, java.util.List<Integer> memberIds) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < memberIds.size(); i++) {
+            sb.append(memberIds.get(i));
+            if (i < memberIds.size() - 1) sb.append(",");
+        }
+        String rawData = groupName + ";" + sb.toString();
+
+        Message req = new Message(CommandType.CREATE_GROUP, 0, rawData);
+        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), req);
+        sendPacket(packet);
+    }
+
+    public InputStream getInputStream() {
+        return in;
+    }
+
+    public Socket getSocket() {
+        return socket;
+    }
+
+    public boolean isConnected() {
+        return connected;
+    }
 
     public void disconnect() {
         try {
@@ -121,6 +157,22 @@ public class NetworkClient {
                 connected = false;
                 System.out.println("[NETWORK_CLIENT] Disconnected.");
             }
-        } catch (IOException e) { e.printStackTrace(); }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public MessagePacket receivePacket() throws IOException {
+        byte[] headerBase = in.readNBytes(MessagePacket.HEADER_SIZE);
+        if (headerBase.length < MessagePacket.HEADER_SIZE) {
+            throw new IOException("Connection closed by server");
+        }
+        int wLen = ByteBuffer.wrap(headerBase, 10, 4).getInt();
+        int restSize = wLen + 2;
+        byte[] restBytes = in.readNBytes(restSize);
+        if (restBytes.length < restSize) {
+            throw new IOException("Incomplete packet data");
+        }
+        return MessagePacket.fromBytes(headerBase, restBytes);
     }
 }
