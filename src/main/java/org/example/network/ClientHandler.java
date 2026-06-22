@@ -46,7 +46,6 @@ public class ClientHandler implements Runnable {
                 }
 
                 int wLen = ByteBuffer.wrap(headerBase, 10, 4).getInt();
-
                 int restSize = wLen + 2;
                 byte[] restBytes = in.readNBytes(restSize);
                 if (restBytes.length < restSize) {
@@ -69,23 +68,20 @@ public class ClientHandler implements Runnable {
                     continue;
                 }
 
-                Message responseMessage = processor.process(messageObj, authorizedUserId);
+                Message responseMessage = processor.process(messageObj);
 
-                if ((messageObj.getCommandType() == CommandType.LOGIN || messageObj.getCommandType() == CommandType.REGISTER)
-                        && responseMessage.getText().startsWith("SUCCESS")) {
+                if (messageObj.getCommandType() == CommandType.LOGIN && responseMessage.getText().startsWith("SUCCESS")) {
                     this.authorizedUserId = responseMessage.getUserId();
                     System.out.println("[HANDLER] Socket successfully assigned to User ID: " + authorizedUserId);
                     ClientRegistry.addClient(this.authorizedUserId, this);
-
                     authService.updateStatus(authorizedUserId, "ONLINE");
                 }
 
                 MessagePacket responsePacket = new MessagePacket((byte) 0, requestPacket.getMessageNum(), responseMessage);
-                out.write(responsePacket.toBytes());
-                out.flush();
+                sendPacket(responsePacket);
             }
-        } catch (Exception e) {
-            System.out.println("[HANDLER] Error or client disconnected: " + e.getMessage());
+        } catch (IOException e) {
+            System.err.println("[HANDLER INFO] Connection closed or reset for user ID " + authorizedUserId);
         } finally {
             if (authorizedUserId != -1) {
                 ClientRegistry.removeClient(authorizedUserId);

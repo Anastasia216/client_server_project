@@ -12,8 +12,7 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.stage.Stage;
 import org.example.network.NetworkClient;
-import org.example.protocol.CommandType;
-import org.example.protocol.MessagePacket;
+import org.example.protocol.Message;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -41,10 +40,10 @@ public class AddGroupController {
 
     @FXML
     public void initialize() {
+        NetworkClient.getInstance().setActiveController(this);
         contactListView.setCellFactory(listView -> new ListCell<>() {
             @Override
             protected void updateItem(ContactPreview contact, boolean empty) {
-                super.updateItem(contact, empty);
                 if (empty || contact == null) {
                     setGraphic(null);
                     setText(null);
@@ -82,41 +81,34 @@ public class AddGroupController {
             }
         });
 
-        loadContactsFromDatabase();
+        NetworkClient.getInstance().sendGetContactsRequest();
 
         cancelButton.setOnAction(event -> closeWindow());
         createButton.setOnAction(event -> handleCreateGroup());
     }
 
-    private void loadContactsFromDatabase() {
-        new Thread(() -> {
-            try {
-                NetworkClient.getInstance().sendGetContactsRequest();
-                MessagePacket response = NetworkClient.getInstance().receivePacket();
-
-                if (response.getMessage().getCommandType() == CommandType.STATUS_OK) {
-                    String rawData = response.getMessage().getText();
-
-                    Platform.runLater(() -> {
-                        contactListView.getItems().clear();
-                        if (rawData != null && !rawData.isEmpty()) {
-                            String[] contacts = rawData.split("\\|\\|\\|");
-                            for (String c : contacts) {
-                                String[] parts = c.split(":::", 3);
-                                if (parts.length == 3) {
-                                    int id = Integer.parseInt(parts[0]);
-                                    String name = parts[1];
-                                    boolean isOnline = "ONLINE".equalsIgnoreCase(parts[2]);
-                                    contactListView.getItems().add(new ContactPreview(id, name, isOnline));
-                                }
-                            }
-                        }
-                    });
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
+    public void handleSystemStatus(Message response) {
+        Platform.runLater(() -> {
+            String rawData = response.getText();
+            if (rawData != null && rawData.startsWith("SUCCESS:GROUP_CREATED")) {
+                System.out.println("[ADD_GROUP] Group successfully deployed on server.");
+                closeWindow();
+                return;
             }
-        }).start();
+            contactListView.getItems().clear();
+            if (rawData != null && !rawData.isEmpty()) {
+                String[] contacts = rawData.split("\\|\\|\\|");
+                for (String c : contacts) {
+                    String[] parts = c.split(":::", 3);
+                    if (parts.length == 3) {
+                        int id = Integer.parseInt(parts[0]);
+                        String name = parts[1];
+                        boolean isOnline = "ONLINE".equalsIgnoreCase(parts[2]);
+                        contactListView.getItems().add(new ContactPreview(id, name, isOnline));
+                    }
+                }
+            }
+        });
     }
 
     @FXML
@@ -135,17 +127,8 @@ public class AddGroupController {
             System.err.println("Choose at least one participant!");
             return;
         }
-
-        new Thread(() -> {
-            try {
-                NetworkClient.getInstance().sendCreateGroupRequest(groupName, selectedUserIds);
-                NetworkClient.getInstance().receivePacket();
-
-                Platform.runLater(this::closeWindow);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }).start();
+        createButton.setDisable(true);
+        NetworkClient.getInstance().sendCreateGroupRequest(groupName, selectedUserIds);
     }
 
     @FXML
