@@ -8,6 +8,7 @@ public interface UserDAO {
     User save(User user);
     Optional<User> findById(long id);
     Optional<User> findByUsername(String username);
+    Optional<User> findByPhone(String phone);
     List<User> findAll();
     void update(User user);
     void delete(long id);

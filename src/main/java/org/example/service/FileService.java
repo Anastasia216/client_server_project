@@ -18,7 +18,6 @@ public class FileService {
         attachment.setFileName(fileName);
         attachment.setFilePath(filePath);
         attachment.setFileSize(fileSize);
-
         return attachmentDAO.save(attachment);
     }
 

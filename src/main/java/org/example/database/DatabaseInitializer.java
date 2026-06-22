@@ -11,7 +11,7 @@ public class DatabaseInitializer {
                   CREATE TABLE IF NOT EXISTS users (
                   user_id INTEGER PRIMARY KEY AUTOINCREMENT,
                   username TEXT UNIQUE NOT NULL,
-                  email TEXT UNIQUE NOT NULL,
+                  phone TEXT UNIQUE NOT NULL,
                   password_hash TEXT NOT NULL,
                   role TEXT NOT NULL DEFAULT 'USER',
                   status TEXT DEFAULT 'OFFLINE',
@@ -56,6 +56,7 @@ public class DatabaseInitializer {
                         content TEXT,
                         sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         status TEXT DEFAULT 'SENT',
+                        type TEXT DEFAULT 'TEXT',
                         is_deleted INTEGER DEFAULT 0,
                         
                         FOREIGN KEY(chat_id)

@@ -13,13 +13,13 @@ public class LogAndStatsService {
     private final LogDAO logDAO;
     private final UserDAO userDAO;
     private final ChatDAO chatDAO;
-    private final MessageDAO messageDAO; // Додано
+    private final MessageDAO messageDAO;
 
     public LogAndStatsService(LogDAO logDAO, UserDAO userDAO, ChatDAO chatDAO, MessageDAO messageDAO) {
         this.logDAO = logDAO;
         this.userDAO = userDAO;
         this.chatDAO = chatDAO;
-        this.messageDAO = messageDAO; // Додано
+        this.messageDAO = messageDAO;
     }
 
     public void logSystemEvent(String level, String message) {

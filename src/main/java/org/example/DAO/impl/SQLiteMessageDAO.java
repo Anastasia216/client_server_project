@@ -54,17 +54,20 @@ public class SQLiteMessageDAO implements MessageDAO {
         return Optional.empty();
     }
 
-    @Override
     public List<Message> findByChatId(long chatId) {
         List<Message> messages = new ArrayList<>();
-        String sql = "SELECT * FROM messages WHERE chat_id = ? AND is_deleted = 0 ORDER BY sent_at ASC";
-        try (Connection connection = DBManager.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setLong(1, chatId);
-            try (ResultSet rs = statement.executeQuery()) {
-                while (rs.next()) {
-                    messages.add(mapResultSetToMessage(rs));
-                }
+        String sql = "SELECT * FROM messages WHERE chat_id = ? ORDER BY message_id ASC";
+        try (Connection conn = DBManager.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setLong(1, chatId);
+            ResultSet rs = pstmt.executeQuery();
+            while (rs.next()) {
+                Message msg = new Message();
+                msg.setId(rs.getInt("message_id"));
+                msg.setChatId(rs.getLong("chat_id"));
+                msg.setSenderId(rs.getInt("sender_id"));
+                msg.setContent(rs.getString("content"));
+                messages.add(msg);
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -91,11 +94,11 @@ public class SQLiteMessageDAO implements MessageDAO {
     }
 
     @Override
-    public void delete(long id) {
+    public void delete(long message_id) {
         String sql = "UPDATE messages SET is_deleted = 1 WHERE message_id = ?";
         try (Connection connection = DBManager.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setLong(1, id);
+            statement.setLong(1, message_id);
             statement.executeUpdate();
         } catch (SQLException e) {
             e.printStackTrace();
@@ -104,7 +107,7 @@ public class SQLiteMessageDAO implements MessageDAO {
 
     private Message mapResultSetToMessage(ResultSet rs) throws SQLException {
         Message message = new Message();
-        message.setId(rs.getLong("id"));
+        message.setId(rs.getLong("message_id"));
         message.setChatId(rs.getLong("chat_id"));
         message.setSenderId(rs.getLong("sender_id"));
         message.setContent(rs.getString("content"));

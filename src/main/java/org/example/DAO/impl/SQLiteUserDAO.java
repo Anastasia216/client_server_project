@@ -13,11 +13,11 @@ public class SQLiteUserDAO implements UserDAO {
 
     @Override
     public User save(User user) {
-        String sql = "INSERT INTO users (username, email, password_hash, role, status, is_blocked) VALUES(?,?,?,?,?,?)";
+        String sql = "INSERT INTO users (username, phone, password_hash, role, status, is_blocked) VALUES(?,?,?,?,?,?)";
         try (Connection connection = DBManager.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             statement.setString(1, user.getUsername());
-            statement.setString(2, user.getEmail());
+            statement.setString(2, user.getPhone());
             statement.setString(3, user.getPasswordHash());
             statement.setString(4, user.getRole());
             statement.setString(5, user.getStatus());
@@ -70,6 +70,24 @@ public class SQLiteUserDAO implements UserDAO {
     }
 
     @Override
+    public Optional<User> findByPhone(String phone) {
+        String sql = "SELECT * FROM users WHERE phone = ?";
+        try (Connection connection = DBManager.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+
+            statement.setString(1, phone);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (resultSet.next()) {
+                    return Optional.of(mapResultSetToUser(resultSet));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return Optional.empty();
+    }
+
+    @Override
     public List<User> findAll() {
         List<User> users = new ArrayList<>();
         String sql = "SELECT * FROM users";
@@ -87,11 +105,11 @@ public class SQLiteUserDAO implements UserDAO {
 
     @Override
     public void update(User user) {
-        String sql = "UPDATE users SET username = ?, email = ?, password_hash = ?, role = ?, status = ?, is_blocked = ? WHERE user_id = ?";
+        String sql = "UPDATE users SET username = ?, phone = ?, password_hash = ?, role = ?, status = ?, is_blocked = ? WHERE user_id = ?";
         try (Connection connection = DBManager.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, user.getUsername());
-            statement.setString(2, user.getEmail());
+            statement.setString(2, user.getPhone());
             statement.setString(3, user.getPasswordHash());
             statement.setString(4, user.getRole());
             statement.setString(5, user.getStatus());
@@ -119,7 +137,7 @@ public class SQLiteUserDAO implements UserDAO {
         return new User(
                 resultSet.getInt("user_id"),
                 resultSet.getString("username"),
-                resultSet.getString("email"),
+                resultSet.getString("phone"),
                 resultSet.getString("password_hash"),
                 resultSet.getString("role"),
                 resultSet.getString("status"),

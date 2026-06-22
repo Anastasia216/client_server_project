@@ -3,7 +3,7 @@ package org.example.models;
 public class User {
     private long user_id;
     private String username;
-    private String email;
+    private String phone;
     private String passwordHash;
     private String role;
     private String status;
@@ -14,7 +14,7 @@ public class User {
     public User(
             int user_id,
             String username,
-            String email,
+            String phone,
             String passwordHash,
             String role,
             String status,
@@ -22,7 +22,7 @@ public class User {
     ) {
         this.user_id = user_id;
         this.username = username;
-        this.email = email;
+        this.phone = phone;
         this.passwordHash = passwordHash;
         this.role = role;
         this.status = status;
@@ -38,9 +38,9 @@ public class User {
         return username;
     }
 
-    public String getEmail() {
+    public String getPhone() {
 
-        return email;
+        return phone;
     }
 
     public String getPasswordHash() {
@@ -67,9 +67,9 @@ public class User {
         this.user_id = user_id;
     }
 
-    public void setEmail(String email) {
+    public void setPhone(String phone) {
 
-        this.email = email;
+        this.phone = phone;
     }
 
     public void setUsername(String username) {

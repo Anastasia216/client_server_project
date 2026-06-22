@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ListView?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.control.SplitPane?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.shape.Circle?>
+<?import javafx.scene.text.Font?>
+
+<VBox prefHeight="750.0" prefWidth="1100.0" stylesheets="@style.css" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.frontend.ChatPanels">
+    <children>
+        <SplitPane dividerPositions="0.28" VBox.vgrow="ALWAYS" style="-fx-box-border: transparent;">
+            <items>
+
+                <StackPane fx:id="leftSidebarRoot" style="-fx-background-color: #f8f9fa; -fx-border-color: #e9ecef; -fx-border-width: 0 1 0 0;">
+                    <children>
+                        <VBox>
+                            <children>
+                                <VBox spacing="15.0">
+                                    <children>
+                                        <HBox alignment="CENTER_LEFT">
+                                            <children>
+                                                <Label text="Messenger" textFill="#212529">
+                                                    <font>
+                                                        <Font name="System Bold" size="22.0" />
+                                                    </font>
+                                                </Label>
+                                            </children>
+                                        </HBox>
+
+                                        <TextField fx:id="searchField" prefHeight="38.0" promptText="Пошук..." style="-fx-background-radius: 10; -fx-border-radius: 10; -fx-border-color: #ced4da; -fx-background-color: #ffffff; -fx-padding: 0 0 0 15;">
+                                            <font>
+                                                <Font size="14.0" />
+                                            </font>
+                                        </TextField>
+                                    </children>
+                                    <padding>
+                                        <Insets bottom="15.0" left="20.0" right="20.0" top="20.0" />
+                                    </padding>
+                                </VBox>
+
+                                <ListView fx:id="ChatListView" style="-fx-background-color: transparent; -fx-control-inner-background: transparent; -fx-border-color: transparent;" VBox.vgrow="ALWAYS" />
+                            </children>
+                        </VBox>
+
+                        <Button fx:id="fabButton" alignment="CENTER" contentDisplay="CENTER" mnemonicParsing="false" style="-fx-background-color: #0078FF; -fx-background-radius: 50em; -fx-min-width: 56; -fx-min-height: 56; -fx-max-width: 56; -fx-max-height: 56; -fx-effect: dropshadow(three-pass-box, rgba(0, 120, 255, 0.4), 10, 0, 0, 4); -fx-cursor: hand;" text="+" textFill="WHITE" StackPane.alignment="BOTTOM_RIGHT">
+                            <font>
+                                <Font name="System Bold" size="28.0" />
+                            </font>
+                            <StackPane.margin>
+                                <Insets bottom="25.0" right="25.0" />
+                            </StackPane.margin>
+                        </Button>
+                    </children>
+                </StackPane>
+
+                <BorderPane style="-fx-background-color: #ffffff;">
+                    <top>
+                        <HBox fx:id="chatHeaderBox" alignment="CENTER_LEFT" spacing="15.0" style="-fx-border-color: #e9ecef; -fx-border-width: 0 0 1 0; -fx-background-color: #ffffff;" BorderPane.alignment="CENTER">
+                            <children>
+                                <Circle fill="#e2e8f0" radius="24.0" stroke="TRANSPARENT" />
+                                <VBox alignment="CENTER_LEFT" spacing="3.0">
+                                    <children>
+                                        <Label fx:id="chatContactNameLabel" text="Select Chat" textFill="#212529">
+                                            <font>
+                                                <Font name="System Bold" size="16.0" />
+                                            </font>
+                                        </Label>
+                                        <Label text="recently visited" textFill="#6c757d">
+                                            <font>
+                                                <Font size="12.0" />
+                                            </font>
+                                        </Label>
+                                    </children>
+                                </VBox>
+                                <Region HBox.hgrow="ALWAYS" />
+                                <Button mnemonicParsing="false" style="-fx-background-color: transparent; -fx-cursor: hand;" text="🔍" textFill="#6c757d">
+                                    <font><Font size="16.0" /></font>
+                                </Button>
+                                <Button mnemonicParsing="false" style="-fx-background-color: transparent; -fx-cursor: hand;" text="⋮" textFill="#6c757d">
+                                    <font><Font size="16.0" /></font>
+                                </Button>
+                            </children>
+                            <padding>
+                                <Insets bottom="12.0" left="25.0" right="25.0" top="12.0" />
+                            </padding>
+                        </HBox>
+                    </top>
+
+                    <center>
+                        <ScrollPane fitToWidth="true" style="-fx-background-color: transparent; -fx-background: #ffffff;" BorderPane.alignment="CENTER">
+                            <content>
+                                <VBox fx:id="messagesVBox" spacing="12.0">
+                                    <padding>
+                                        <Insets bottom="25.0" left="25.0" right="25.0" top="25.0" />
+                                    </padding>
+                                </VBox>
+                            </content>
+                        </ScrollPane>
+                    </center>
+
+                    <bottom>
+                        <HBox alignment="CENTER" spacing="12.0" style="-fx-border-color: #e9ecef; -fx-border-width: 1 0 0 0; -fx-background-color: #ffffff;" BorderPane.alignment="CENTER">
+                            <children>
+                                <Button fx:id="attachmentButton" mnemonicParsing="false" style="-fx-background-color: transparent; -fx-cursor: hand;" text="📎" textFill="#6c757d">
+                                    <font><Font size="18.0" /></font>
+                                </Button>
+                                <TextField fx:id="messageInputField" prefHeight="40.0" promptText="Напишіть повідомлення..." style="-fx-background-radius: 20; -fx-border-radius: 20; -fx-border-color: #ced4da; -fx-background-color: #f8f9fa;" HBox.hgrow="ALWAYS">
+                                    <font>
+                                        <Font size="14.0" />
+                                    </font>
+                                </TextField>
+                                <Button fx:id="sendButton" mnemonicParsing="false" style="-fx-background-color: #007bff; -fx-text-fill: white; -fx-background-radius: 20; -fx-cursor: hand; -fx-pref-width: 40; -fx-pref-height: 40;" text="➤" />
+                            </children>
+                            <padding>
+                                <Insets bottom="20.0" left="25.0" right="25.0" top="20.0" />
+                            </padding>
+                        </HBox>
+                    </bottom>
+                </BorderPane>
+            </items>
+        </SplitPane>
+    </children>
+</VBox>
