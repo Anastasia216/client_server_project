@@ -49,10 +49,6 @@ public class MessageService {
 
         messageDAO.save(message);
     }
-    public String getHistory(long chatId){
-        List<org.example.models.Message>messages = messageDAO.findByChatId(chatId);
-        return messages.stream().map(m -> m.getSenderId() + ":" + m.getContent()).collect(java.util.stream.Collectors.joining("/n"));
-    }
     public String getChatHistoryRaw(long chatId) {
         List<Message> history = messageDAO.findByChatId(chatId);
         return history.stream().map(Message::getContent).collect(Collectors.joining("\n"));
