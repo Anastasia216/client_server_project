@@ -9,7 +9,6 @@ import javafx.stage.Stage;
 import org.example.network.NetworkClient;
 import org.example.protocol.CommandType;
 import org.example.protocol.Message;
-import org.example.protocol.MessagePacket;
 
 public class AddContactController {
 
@@ -20,6 +19,7 @@ public class AddContactController {
 
     @FXML
     public void initialize() {
+        NetworkClient.getInstance().setActiveController(this);
         cancelButton.setOnAction(event -> closeWindow());
         addButton.setOnAction(event -> handleAddContact());
     }
@@ -30,52 +30,29 @@ public class AddContactController {
             statusLabel.setText("Please enter a username or phone.");
             return;
         }
-
-        // Блокуємо кнопку, щоб уникнути подвійних кліків
         addButton.setDisable(true);
         statusLabel.setText("Searching...");
+        NetworkClient.getInstance().sendSearchRequest(identifier);
+    }
 
-        new Thread(() -> {
-            try {
-                // Використовуємо новий зручний метод!
-                NetworkClient.getInstance().sendSearchRequest(identifier);
-
-                // Очікуємо відповідь
-                MessagePacket response = NetworkClient.getInstance().receivePacket();
-
-                Platform.runLater(() -> {
-                    addButton.setDisable(false);
-                    if (response.getMessage().getCommandType() == CommandType.STATUS_OK) {
-                        String foundUsername = response.getMessage().getText();
-                        System.out.println("Contact found: " + foundUsername);
-                        // Якщо юзер реально знайдений, закриваємо вікно!
-                        closeWindow();
-                    } else {
-                        // Якщо помилка - виводимо РЕАЛЬНИЙ текст від сервера (наприклад ERROR:USER_NOT_FOUND)
-                        String errorText = response.getMessage().getText();
-                        statusLabel.setText(errorText.replace("ERROR:", "").replace("_", " "));
-                    }
-                });
-
-            } catch (Exception e) {
-                Platform.runLater(() -> {
-                    addButton.setDisable(false);
-                    statusLabel.setText("Network error. Server offline?");
-                });
-                e.printStackTrace();
+    public void handleSystemStatus(Message response) {
+        Platform.runLater(() -> {
+            addButton.setDisable(false);
+            if (response.getCommandType() == CommandType.STATUS_OK) {
+                System.out.println("[ADD_CONTACT] Chat created successfully. Synchronizing view.");
+                closeWindow();
+            } else {
+                String errorText = response.getText();
+                statusLabel.setText(errorText.replace("ERROR:", "").replace("_", " "));
             }
-        }).start();
+        });
     }
 
     @FXML
     private void closeWindow() {
-        try {
-            if (cancelButton != null && cancelButton.getScene() != null) {
-                Stage stage = (Stage) cancelButton.getScene().getWindow();
-                stage.close();
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
+        if (cancelButton != null && cancelButton.getScene() != null) {
+            Stage stage = (Stage) cancelButton.getScene().getWindow();
+            stage.close();
         }
     }
 }

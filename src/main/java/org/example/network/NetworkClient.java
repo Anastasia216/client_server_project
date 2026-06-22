@@ -3,12 +3,12 @@ package org.example.network;
 import org.example.protocol.CommandType;
 import org.example.protocol.Message;
 import org.example.protocol.MessagePacket;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
-import java.nio.ByteBuffer;
+import java.util.Base64;
+import java.util.List;
 
 public class NetworkClient {
     private static NetworkClient instance;
@@ -21,6 +21,9 @@ public class NetworkClient {
     private boolean connected = false;
     private Object activeController;
 
+    private int myUserId = -1;
+    private String myUsername = "";
+
     private NetworkClient() {}
 
     public static synchronized NetworkClient getInstance() {
@@ -30,6 +33,12 @@ public class NetworkClient {
         return instance;
     }
 
+    public int getMyUserId() { return myUserId; }
+    public void setMyUserId(int myUserId) { this.myUserId = myUserId; }
+
+    public String getMyUsername() { return myUsername; }
+    public void setMyUsername(String myUsername) { this.myUsername = myUsername; }
+
     public void connect() throws IOException {
         if (connected) return;
         System.out.println("[NETWORK_CLIENT] Connecting to server at " + HOST + ":" + PORT + "...");
@@ -38,10 +47,10 @@ public class NetworkClient {
         this.in = socket.getInputStream();
         this.connected = true;
         System.out.println("[NETWORK_CLIENT] Connected to server successfully.");
+
         Thread receiverThread = new Thread(new NetworkReceiverThread());
         receiverThread.setDaemon(true);
         receiverThread.start();
-        System.out.println("[NETWORK_CLIENT] Background receiver thread sparked successfully.");
     }
 
     public synchronized void sendPacket(MessagePacket packet) {
@@ -49,25 +58,17 @@ public class NetworkClient {
             if (out != null && !socket.isClosed()) {
                 out.write(packet.toBytes());
                 out.flush();
-                System.out.println("[NETWORK_CLIENT] Sent packet type: " + packet.getMessage().getCommandType());
             }
         } catch (IOException e) {
             System.err.println("[NETWORK_CLIENT ERROR] Send failed: " + e.getMessage());
         }
     }
 
-    public void setActiveController(Object controller) {
-        this.activeController = controller;
-        if (controller != null) {
-            System.out.println("[NETWORK_CLIENT] Switched bridge focus to UI Controller: " + controller.getClass().getSimpleName());
-        }
-    }
-
-    public Object getActiveController() {
-        return activeController;
-    }
+    public void setActiveController(Object controller) { this.activeController = controller; }
+    public Object getActiveController() { return activeController; }
 
     public void sendLoginRequest(String username, String password) {
+        this.myUsername = username;
         String rawData = username + ";" + password;
         Message loginMessage = new Message(CommandType.LOGIN, 0, rawData);
         MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), loginMessage);
@@ -81,98 +82,95 @@ public class NetworkClient {
         sendPacket(packet);
     }
 
-    public void sendTextMessage(int chatId, int receiverId, String text, int currentUserId) {
-        String rawData = chatId + ";" + receiverId + ";" + text;
-        Message messageMsg = new Message(CommandType.SEND_MESSAGE, currentUserId, rawData);
+    public void sendTextMessage(int chatId, String text) {
+        String rawData = chatId + ";0;" + text;
+        Message messageMsg = new Message(CommandType.SEND_MESSAGE, myUserId, rawData);
         MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), messageMsg);
-        sendPacket(packet);
-    }
-
-    public void sendFileMessage(int chatId, String fileName, String base64Data) {
-        String rawData = chatId + ";" + fileName + ";" + base64Data;
-        Message messageMsg = new Message(CommandType.SEND_FILE, 0, rawData);
-        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), messageMsg);
-        sendPacket(packet);
-    }
-
-    public void sendDownloadFileRequest(long messageId) {
-        Message req = new Message(CommandType.DOWNLOAD_FILE, 0, String.valueOf(messageId));
-        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), req);
-        sendPacket(packet);
-    }
-
-    public void sendSearchRequest(String query) {
-        Message searchMessage = new Message(CommandType.SEARCH, 0, query);
-        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), searchMessage);
         sendPacket(packet);
     }
 
     public void sendGetChatsRequest() {
-        Message requestMessage = new Message(CommandType.GET_CHATS, 0, "REQUEST_CHATS");
-        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), requestMessage);
+        Message requestMsg = new Message(CommandType.GET_CHATS, myUserId, "");
+        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), requestMsg);
         sendPacket(packet);
     }
 
-    public void sendGetChatHistoryRequest(String chatName) {
-        Message req = new Message(CommandType.GET_CHAT_HISTORY, 0, chatName);
-        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), req);
+    public void sendGetHistoryRequest(int chatId) {
+        String rawData = String.valueOf(chatId);
+        Message historyMessage = new Message(CommandType.GET_CHAT_HISTORY, myUserId, rawData);
+        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), historyMessage);
+        sendPacket(packet);
+    }
+
+    public void sendSearchRequest(String usernameOrPhone) {
+        Message searchMessage = new Message(CommandType.SEARCH, myUserId, usernameOrPhone);
+        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), searchMessage);
         sendPacket(packet);
     }
 
     public void sendGetContactsRequest() {
-        Message req = new Message(CommandType.GET_CONTACTS, 0, "REQUEST_CONTACTS");
-        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), req);
+        Message contactsMessage = new Message(CommandType.GET_CONTACTS, myUserId, "");
+        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), contactsMessage);
         sendPacket(packet);
     }
 
-    public void sendCreateGroupRequest(String groupName, java.util.List<Integer> memberIds) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < memberIds.size(); i++) {
-            sb.append(memberIds.get(i));
-            if (i < memberIds.size() - 1) sb.append(",");
+    public void sendCreateGroupRequest(String groupName, List<Integer> memberIds) {
+        StringBuilder sb = new StringBuilder(groupName);
+        for (int id : memberIds) {
+            sb.append(";").append(id);
         }
-        String rawData = groupName + ";" + sb.toString();
-
-        Message req = new Message(CommandType.CREATE_GROUP, 0, rawData);
-        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), req);
+        Message groupMessage = new Message(CommandType.CREATE_CHAT, myUserId, sb.toString());
+        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), groupMessage);
         sendPacket(packet);
     }
 
-    public InputStream getInputStream() {
-        return in;
+    public void sendFileRequest(int chatId, String fileName, byte[] fileBytes) {
+        String base64Data = Base64.getEncoder().encodeToString(fileBytes);
+        String rawData = chatId + ";0;" + fileName + ";" + base64Data;
+        Message fileMessage = new Message(CommandType.SEND_FILE, myUserId, rawData);
+        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), fileMessage);
+        sendPacket(packet);
     }
 
-    public Socket getSocket() {
-        return socket;
+    public void sendDeleteChatRequest(int chatId) {
+        String rawData = String.valueOf(chatId);
+        Message deleteMessage = new Message(CommandType.DELETE_CHAT, myUserId, rawData);
+        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), deleteMessage);
+        sendPacket(packet);
     }
 
-    public boolean isConnected() {
-        return connected;
+    public void sendGetGroupMembersRequest(int chatId) {
+        String rawData = String.valueOf(chatId);
+        Message msg = new Message(CommandType.GET_GROUP_MEMBERS, myUserId, rawData);
+        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), msg);
+        sendPacket(packet);
     }
+
+    public void sendRenameChatRequest(int chatId, String newName) {
+        String rawData = chatId + ";" + newName;
+        Message msg = new Message(CommandType.RENAME_CHAT, myUserId, rawData);
+        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), msg);
+        sendPacket(packet);
+    }
+
+    public void sendPromoteToAdminRequest(int chatId, int targetUserId) {
+        String rawData = chatId + ";" + targetUserId;
+        Message msg = new Message(CommandType.PROMOTE_TO_ADMIN, myUserId, rawData);
+        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), msg);
+        sendPacket(packet);
+    }
+    public InputStream getInputStream() { return in; }
+    public Socket getSocket() { return socket; }
+    public boolean isConnected() { return connected; }
 
     public void disconnect() {
         try {
             if (socket != null && !socket.isClosed()) {
                 socket.close();
                 connected = false;
-                System.out.println("[NETWORK_CLIENT] Disconnected.");
+                myUserId = -1;
+                myUsername = "";
             }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public MessagePacket receivePacket() throws IOException {
-        byte[] headerBase = in.readNBytes(MessagePacket.HEADER_SIZE);
-        if (headerBase.length < MessagePacket.HEADER_SIZE) {
-            throw new IOException("Connection closed by server");
-        }
-        int wLen = ByteBuffer.wrap(headerBase, 10, 4).getInt();
-        int restSize = wLen + 2;
-        byte[] restBytes = in.readNBytes(restSize);
-        if (restBytes.length < restSize) {
-            throw new IOException("Incomplete packet data");
-        }
-        return MessagePacket.fromBytes(headerBase, restBytes);
+        } catch (IOException e) { e.printStackTrace(); }
     }
 }

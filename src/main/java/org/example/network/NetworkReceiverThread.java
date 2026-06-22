@@ -37,53 +37,65 @@ public class NetworkReceiverThread implements Runnable {
 
                 Platform.runLater(() -> {
                     Object controller = NetworkClient.getInstance().getActiveController();
-                    if (controller == null) {
-                        System.out.println("[UI_BRIDGE LOG] Message arrived, but no UI focus registered: " + responseMessage.getText());
-                        return;
-                    }
+                    if (controller == null) return;
 
                     String controllerName = controller.getClass().getSimpleName();
 
                     try {
                         switch (responseMessage.getCommandType()) {
                             case STATUS_OK, STATUS_ERROR -> {
-                                if (controllerName.equals("LoginController")) {
+                                if (controllerName.equals("LoginController") || controllerName.equals("RegisterController")) {
                                     Method method = controller.getClass().getMethod("handleAuthResponse", Message.class);
                                     method.invoke(controller, responseMessage);
-                                } else if (controllerName.equals("ChatController") || controllerName.equals("AdminController")) {
+                                } else if (controllerName.equals("ChatPanels") || controllerName.equals("AddGroupController") || controllerName.equals("AddContactController")) {
                                     Method method = controller.getClass().getMethod("handleSystemStatus", Message.class);
                                     method.invoke(controller, responseMessage);
                                 }
                             }
 
                             case SEND_MESSAGE -> {
-                                if (controllerName.equals("ChatController")) {
+                                if (controllerName.equals("ChatPanels")) {
                                     Method method = controller.getClass().getMethod("handleIncomingMessage", Message.class);
                                     method.invoke(controller, responseMessage);
                                 }
                             }
 
                             case SEND_FILE -> {
-                                if (controllerName.equals("ChatController")) {
+                                if (controllerName.equals("ChatPanels")) {
                                     Method method = controller.getClass().getMethod("handleIncomingFile", Message.class);
                                     method.invoke(controller, responseMessage);
                                 }
                             }
 
                             case GET_CHAT_HISTORY -> {
-                                if (controllerName.equals("ChatController")) {
+                                if (controllerName.equals("ChatPanels")) {
                                     Method method = controller.getClass().getMethod("handleHistoryResponse", Message.class);
                                     method.invoke(controller, responseMessage);
+                                }
+                            }
+
+                            case DOWNLOAD_FILE -> {
+                                if (controllerName.equals("ChatPanels")) {
+                                    try {
+                                        java.lang.reflect.Method method = controller.getClass().getMethod("handleIncomingFileResponse", org.example.protocol.Message.class);
+                                        method.invoke(controller, responseMessage);
+                                    } catch (Exception e) {
+                                        System.err.println("[UI_BRIDGE ERROR] Failed to invoke handleIncomingFileResponse: " + e.getMessage());
+                                    }
+                                }
+                            }
+
+                            case GET_GROUP_MEMBERS -> {
+                                if (controllerName.equals("ChatPanels")) {
+                                    Method method = controller.getClass().getMethod("showGroupMembersWindow", String.class);
+                                    method.invoke(controller, responseMessage.getText());
                                 }
                             }
 
                             default -> System.out.println("[UI_BRIDGE INFO] Unrouted command text: " + responseMessage.getText());
                         }
                     } catch (NoSuchMethodException e) {
-                        // Якщо Анастасія вже створила клас контролера, але ще не встигла написати потрібний метод
-                        System.out.println("[UI_BRIDGE NOTICE] Controller '" + controllerName +
-                                "' detected, but missing handler method for " + responseMessage.getCommandType() +
-                                ". Content: " + responseMessage.getText());
+                        System.out.println("[UI_BRIDGE NOTICE] Missing handler method in " + controllerName + " for " + responseMessage.getCommandType());
                     } catch (Exception e) {
                         System.err.println("[UI_BRIDGE ERROR] Dynamic invocation failed: " + e.getMessage());
                     }
@@ -91,8 +103,6 @@ public class NetworkReceiverThread implements Runnable {
             }
         } catch (Exception e) {
             System.err.println("[RECEIVER_THREAD ERROR] Connection lost: " + e.getMessage());
-        } finally {
-            System.out.println("[RECEIVER_THREAD] Background thread finished execution.");
         }
     }
 }

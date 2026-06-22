@@ -64,7 +64,6 @@ public class MessagePacket {
         }
 
         if (payloadBytes.length != wLen + 2) throw new IllegalArgumentException("Invalid payload length");
-
         short expectedPayloadCrc = calculateCRC16(payloadBytes, 0, wLen);
         ByteBuffer payloadBuf = ByteBuffer.wrap(payloadBytes);
         short actualPayloadCrc = payloadBuf.getShort(wLen);

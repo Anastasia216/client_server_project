@@ -1,12 +1,10 @@
 package org.example.network;
 
+import org.example.DAO.impl.*;
+import org.example.database.DBManager;
 import org.example.models.User;
 import org.example.models.Chat;
 import org.example.models.ChatMember;
-import org.example.models.ChatType;
-import org.example.models.ChatRole;
-import org.example.DAO.impl.*;
-
 import org.example.protocol.CommandType;
 import org.example.protocol.Message;
 import org.example.protocol.MessagePacket;
@@ -15,30 +13,33 @@ import org.example.service.MessageService;
 import org.example.service.ChatService;
 import org.example.service.FileService;
 
-import java.util.List;
+import java.io.File;
+import java.nio.file.Files;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.util.Optional;
+import java.util.List;
+import java.util.ArrayList;
 
 public class Processor {
     private final AuthService authService;
     private final MessageService messageService;
     private final ChatService chatService;
     private final FileService fileService;
+    private final SQLiteUserDAO userDAO;
 
     public Processor() {
-        this.authService = new AuthService(new SQLiteUserDAO());
+        this.userDAO = new SQLiteUserDAO();
+        this.authService = new AuthService(this.userDAO);
         this.messageService = new MessageService(new SQLiteMessageDAO());
         this.chatService = new ChatService(new SQLiteChatDAO(), new SQLiteChatMemberDAO());
         this.fileService = new FileService(new SQLiteAttachmentDAO());
     }
 
-    public synchronized Message process(Message message, int currentUserId) {
-        CommandType command = message.getCommandType();
-        if (command == null) {
-            return new Message(CommandType.STATUS_ERROR, 0, "ERROR:UNKNOWN_COMMAND");
-        }
-
+    public synchronized Message process(Message message) {
         try {
-            switch (command) {
+            switch (message.getCommandType()) {
                 case LOGIN -> {
                     Optional<User> userOpt = authService.loginFromRaw(message.getText());
                     if (userOpt.isPresent()) {
@@ -46,287 +47,354 @@ public class Processor {
                         System.out.println("[PROCESSOR] Authorization successful for: " + user.getUsername());
                         return new Message(CommandType.STATUS_OK, (int) user.getUser_id(), "SUCCESS;" + user.getRole());
                     } else {
-                        return new Message(CommandType.STATUS_ERROR, 0, "ERROR:INVALID_CREDENTIALS");
+                        return new Message(CommandType.STATUS_ERROR, 0, "ERROR:INVALID_USERNAME_OR_PASSWORD_OR_BLOCKED");
                     }
                 }
 
                 case REGISTER -> {
-                    Optional<User> registeredUser = authService.registerFromRaw(message.getText());
-                    if (registeredUser.isPresent()) {
-                        System.out.println("[PROCESSOR]\n" + "The new user has been successfully registered.");
-                        return new Message(CommandType.STATUS_OK, (int) registeredUser.get().getUser_id(), "SUCCESS:REGISTRATION_COMPLETED");
+                    Optional<User> registeredUserOpt = authService.registerFromRaw(message.getText());
+                    if (registeredUserOpt.isPresent()) {
+                        System.out.println("[PROCESSOR] New user successfully registered via Phone.");
+                        return new Message(CommandType.STATUS_OK, 0, "SUCCESS:REGISTRATION_COMPLETED");
                     } else {
                         return new Message(CommandType.STATUS_ERROR, 0, "ERROR:USERNAME_OR_PHONE_ALREADY_EXISTS");
                     }
                 }
 
-                case SEARCH -> {
-                    SQLiteUserDAO userDao = new SQLiteUserDAO();
-                    String query = message.getText().trim();
-                    Optional<User> foundUser;
-
-                    if (query.matches("^\\+?\\d+$")) {
-                        foundUser = userDao.findByPhone(query);
-                    } else {
-                        foundUser = userDao.findByUsername(query);
-                    }
-
-                    if (foundUser.isPresent()) {
-                        User u = foundUser.get();
-
-                        if (u.getUser_id() == currentUserId) {
-                            return new Message(CommandType.STATUS_ERROR, 0, "ERROR:CANNOT_ADD_YOURSELF");
+                case SEND_MESSAGE -> {
+                    try {
+                        String[] tokens = message.getText().split(";", 3);
+                        int chatId = Integer.parseInt(tokens[0]);
+                        String textContent = tokens[2];
+                        messageService.saveMessage(chatId, message.getUserId(), textContent);
+                        List<ChatMember> members = chatService.getChatMembers(chatId);
+                        String senderName = "Unknown";
+                        Optional<User> senderOpt = userDAO.findById(message.getUserId());
+                        if (senderOpt.isPresent()) {
+                            senderName = senderOpt.get().getUsername();
                         }
+                        Message broadcastMsg = new Message(CommandType.SEND_MESSAGE, message.getUserId(), chatId + ";" + senderName + ";" + textContent);
+                        MessagePacket groupPacket = new MessagePacket((byte) 0, System.currentTimeMillis(), broadcastMsg);
 
-                        SQLiteChatDAO chatDao = new SQLiteChatDAO();
-                        SQLiteChatMemberDAO memberDao = new SQLiteChatMemberDAO();
-
-                        boolean chatExists = false;
-                        List<ChatMember> myChats = memberDao.findByUserId(currentUserId);
-                        for (ChatMember cm : myChats) {
-                            Optional<ChatMember> contactInSameChat = memberDao.findMember(cm.getChatId(), u.getUser_id());
-                            if (contactInSameChat.isPresent()) {
-                                chatExists = true;
-                                break;
+                        for (ChatMember member : members) {
+                            ClientHandler memberHandler = ClientRegistry.getHandler((int) member.getUserId());
+                            if (memberHandler != null) {
+                                memberHandler.sendPacket(groupPacket);
                             }
                         }
 
-                        if (!chatExists) {
-                            Chat newChat = new Chat();
-                            newChat.setName(u.getUsername());
-                            newChat.setType(ChatType.PRIVATE);
-                            newChat = chatDao.save(newChat);
-
-                            ChatMember me = new ChatMember();
-                            me.setChatId(newChat.getId());
-                            me.setUserId(currentUserId);
-                            me.setRole(ChatRole.USER);
-                            memberDao.addMember(me);
-
-                            ChatMember contact = new ChatMember();
-                            contact.setChatId(newChat.getId());
-                            contact.setUserId(u.getUser_id());
-                            contact.setRole(ChatRole.USER);
-                            memberDao.addMember(contact);
-
-                            System.out.println("[PROCESSOR] Created new private chat with: " + u.getUsername());
-                        }
-
-                        return new Message(CommandType.STATUS_OK, (int) u.getUser_id(), u.getUsername());
-                    } else {
-                        return new Message(CommandType.STATUS_ERROR, 0, "ERROR:USER_NOT_FOUND");
+                        return new Message(CommandType.STATUS_OK, message.getUserId(), "SILENT_OK");
+                    } catch (Exception e) {
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FAILED_TO_SEND");
                     }
                 }
 
                 case GET_CHATS -> {
-                    if (currentUserId == -1) return new Message(CommandType.STATUS_ERROR, 0, "ERROR:NOT_AUTHORIZED");
-
-                    SQLiteChatMemberDAO memberDao = new SQLiteChatMemberDAO();
-                    SQLiteChatDAO chatDao = new SQLiteChatDAO();
-
-                    List<ChatMember> myMemberships = memberDao.findByUserId(currentUserId);
-                    StringBuilder sb = new StringBuilder();
-
-                    for (ChatMember cm : myMemberships) {
-                        Optional<Chat> c = chatDao.findById(cm.getChatId());
-                        if (c.isPresent()) {
-                            sb.append(c.get().getName()).append(";");
-                        }
-                    }
-
-                    String result = sb.length() > 0 ? sb.substring(0, sb.length() - 1) : "";
-                    return new Message(CommandType.STATUS_OK, 0, result);
-                }
-
-                case SEND_MESSAGE -> {
                     try {
-                        String[] parts = message.getText().split(";", 3);
-                        if (parts.length >= 3) {
-                            long chatId = Long.parseLong(parts[0]);
-                            String textContent = parts[2];
-                            org.example.models.Message msg = new org.example.models.Message();
-                            msg.setChatId(chatId);
-                            msg.setSenderId(currentUserId);
-                            msg.setContent(textContent);
-                            msg.setStatus("SENT");
-                            msg.setType(org.example.models.MessageType.TEXT);
-                            msg.setDeleted(false);
+                        List<Chat> userChats = chatService.getChatsForUser(message.getUserId());
+                        StringBuilder sb = new StringBuilder();
 
-                            new org.example.DAO.impl.SQLiteMessageDAO().save(msg);
-                            return new Message(CommandType.STATUS_OK, (int) chatId, "SUCCESS:DELIVERED");
+                        for (Chat chat : userChats) {
+                            String chatName = chat.getName();
+                            if (chat.getType() == org.example.models.ChatType.PRIVATE) {
+                                String sql = """
+                                    SELECT username FROM users 
+                                    JOIN chat_members ON users.user_id = chat_members.user_id 
+                                    WHERE chat_members.chat_id = ? AND users.user_id != ?
+                                """;
+                                try (Connection conn = DBManager.getConnection();
+                                     PreparedStatement stmt = conn.prepareStatement(sql)) {
+                                    stmt.setLong(1, chat.getId());
+                                    stmt.setLong(2, message.getUserId());
+                                    try (ResultSet rs = stmt.executeQuery()) {
+                                        if (rs.next()) {
+                                            chatName = rs.getString("username");
+                                        }
+                                    }
+                                }
+                            }
+                            sb.append(chatName).append(" (ID: ").append(chat.getId()).append(");");
                         }
-                        return new Message(CommandType.STATUS_ERROR, 0, "ERROR:BAD_FORMAT");
+                        return new Message(CommandType.STATUS_OK, message.getUserId(), sb.toString());
                     } catch (Exception e) {
-                        return new Message(CommandType.STATUS_ERROR, 0, "ERROR:FAILED_TO_SEND");
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FAILED_TO_LOAD_CHATS");
                     }
                 }
-                case GET_CHAT_HISTORY -> {
-                    if (currentUserId == -1) return new Message(CommandType.STATUS_ERROR, 0, "ERROR:NOT_AUTHORIZED");
 
-                    String chatName = message.getText().trim();
-                    org.example.DAO.impl.SQLiteChatDAO chatDao = new org.example.DAO.impl.SQLiteChatDAO();
-                    org.example.DAO.impl.SQLiteChatMemberDAO memberDao = new org.example.DAO.impl.SQLiteChatMemberDAO();
-                    org.example.DAO.impl.SQLiteMessageDAO msgDao = new org.example.DAO.impl.SQLiteMessageDAO();
-                    org.example.DAO.impl.SQLiteUserDAO userDao = new org.example.DAO.impl.SQLiteUserDAO();
-
-                    long targetChatId = -1;
-                    for (org.example.models.ChatMember cm : memberDao.findByUserId(currentUserId)) {
-                        java.util.Optional<org.example.models.Chat> c = chatDao.findById(cm.getChatId());
-                        if (c.isPresent() && c.get().getName().equals(chatName)) {
-                            targetChatId = c.get().getId();
-                            break;
+                case SEARCH -> {
+                    try {
+                        String identifier = message.getText().trim();
+                        Optional<User> targetUserOpt = userDAO.findByUsername(identifier);
+                        if (targetUserOpt.isEmpty()) {
+                            targetUserOpt = userDAO.findByPhone(identifier);
                         }
-                    }
 
-                    if (targetChatId == -1) return new Message(CommandType.STATUS_ERROR, 0, "ERROR:CHAT_NOT_FOUND");
-
-                    java.util.List<org.example.models.Message> msgs = msgDao.findByChatId(targetChatId);
-                    StringBuilder sb = new StringBuilder();
-
-                    for (org.example.models.Message m : msgs) {
-                        String typeStr = m.getType() != null ? m.getType().name() : "TEXT";
-                        long msgId = m.getId();
-                        String safeContent = m.getContent() != null ? m.getContent() : "";
-
-                        if (m.getSenderId() == currentUserId) {
-                            sb.append("MINE:::").append(typeStr).append(":::").append(msgId).append(":::").append(safeContent).append("|||");
+                        if (targetUserOpt.isPresent()) {
+                            User targetUser = targetUserOpt.get();
+                            if (targetUser.getUser_id() == message.getUserId()) {
+                                return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:CANNOT_ADD_YOURSELF");
+                            }
+                            Chat privateChat = chatService.createChat("PrivateChat", org.example.models.ChatType.PRIVATE, message.getUserId());
+                            chatService.addUserToChat(privateChat.getId(), targetUser.getUser_id());
+                            ClientHandler peerHandler = ClientRegistry.getHandler((int) targetUser.getUser_id());
+                            if (peerHandler != null) {
+                                peerHandler.sendPacket(new MessagePacket((byte) 0, System.currentTimeMillis(),
+                                        new Message(CommandType.STATUS_OK, (int) targetUser.getUser_id(), "SUCCESS:REFRESH_CHATS")));
+                            }
+                            return new Message(CommandType.STATUS_OK, message.getUserId(), "SUCCESS:REFRESH_CHATS");
                         } else {
-                            String senderName = userDao.findById(m.getSenderId()).map(org.example.models.User::getUsername).orElse("User");
-                            sb.append(senderName).append(":::").append(typeStr).append(":::").append(msgId).append(":::").append(safeContent).append("|||");
+                            return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:USER_NOT_FOUND");
                         }
+                    } catch (Exception e) {
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:SEARCH_FAILED");
                     }
-                    return new Message(CommandType.STATUS_OK, (int) targetChatId, sb.toString());
+                }
+
+                case GET_CONTACTS -> {
+                    try {
+                        List<User> allUsers = userDAO.findAll();
+                        StringBuilder sb = new StringBuilder();
+                        for (User u : allUsers) {
+                            if (u.getUser_id() == message.getUserId()) continue;
+                            sb.append(u.getUser_id()).append(":::")
+                                    .append(u.getUsername()).append(":::")
+                                    .append(u.getStatus() != null ? u.getStatus() : "OFFLINE")
+                                    .append("|||");
+                        }
+                        String responseText = sb.length() > 0 ? sb.substring(0, sb.length() - 3) : "";
+                        return new Message(CommandType.STATUS_OK, message.getUserId(), responseText);
+                    } catch (Exception e) {
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FAILED_TO_LOAD_CONTACTS");
+                    }
+                }
+
+                case CREATE_CHAT -> {
+                    try {
+                        String rawData = message.getText();
+                        if (rawData == null || rawData.trim().isEmpty()) {
+                            return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:DATA_EMPTY");
+                        }
+                        String[] tokens = rawData.split(";");
+                        String groupName = tokens[0];
+                        Chat createdChat = chatService.createGroup(groupName, message.getUserId());
+                        List<Integer> addedUsers = new ArrayList<>();
+                        for (int i = 1; i < tokens.length; i++) {
+                            int targetUserId = Integer.parseInt(tokens[i]);
+                            chatService.addUserToChat(createdChat.getId(), targetUserId);
+                            addedUsers.add(targetUserId);
+                        }
+                        for (int uid : addedUsers) {
+                            ClientHandler peerHandler = ClientRegistry.getHandler(uid);
+                            if (peerHandler != null) {
+                                peerHandler.sendPacket(new MessagePacket((byte) 0, System.currentTimeMillis(),
+                                        new Message(CommandType.STATUS_OK, uid, "SUCCESS:REFRESH_CHATS")));
+                            }
+                        }
+                        return new Message(CommandType.STATUS_OK, message.getUserId(), "SUCCESS:GROUP_CREATED");
+                    } catch (Exception e) {
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FAILED_TO_CREATE_CHAT");
+                    }
+                }
+
+                case GET_CHAT_HISTORY -> {
+                    try {
+                        int chatId = Integer.parseInt(message.getText());
+                        String sql = """
+                            SELECT users.username, messages.content FROM messages 
+                            JOIN users ON messages.sender_id = users.user_id 
+                            WHERE messages.chat_id = ? 
+                            ORDER BY messages.message_id ASC
+                        """;
+                        StringBuilder sb = new StringBuilder();
+                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
+                             java.sql.PreparedStatement stmt = conn.prepareStatement(sql)) {
+                            stmt.setInt(1, chatId);
+                            try (java.sql.ResultSet rs = stmt.executeQuery()) {
+                                while (rs.next()) {
+                                    sb.append(rs.getString("username")).append(":::").append(rs.getString("content")).append("\n");
+                                }
+                            }
+                        }
+                        return new Message(CommandType.GET_CHAT_HISTORY, chatId, sb.toString());
+                    } catch (Exception e) {
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FAILED_TO_LOAD_HISTORY");
+                    }
+                }
+
+                case SEND_FILE -> {
+                    try {
+                        String[] tokens = message.getText().split(";", 4);
+                        int chatId = Integer.parseInt(tokens[0]);
+                        String fileName = tokens[2];
+                        byte[] fileBytes = java.util.Base64.getDecoder().decode(tokens[3]);
+
+                        File uploadDir = new File("uploads");
+                        if (!uploadDir.exists()) uploadDir.mkdirs();
+
+                        String uniqueName = System.currentTimeMillis() + "_" + fileName;
+                        File serverFile = new File(uploadDir, uniqueName);
+                        Files.write(serverFile.toPath(), fileBytes);
+
+                        messageService.saveMessage(chatId, message.getUserId(), "FILE_ATTACHMENT:" + fileName + "?" + uniqueName);
+                        long lastMsgId = 0;
+                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
+                             java.sql.PreparedStatement stmt = conn.prepareStatement("SELECT max(message_id) FROM messages")) {
+                            try (java.sql.ResultSet rs = stmt.executeQuery()) {
+                                if (rs.next()) lastMsgId = rs.getLong(1);
+                            }
+                        }
+
+                        fileService.registerAttachment(lastMsgId, fileName, serverFile.getAbsolutePath(), fileBytes.length);
+
+                        List<ChatMember> members = chatService.getChatMembers(chatId);
+                        String senderName = "Unknown";
+                        Optional<User> senderOpt = userDAO.findById(message.getUserId());
+                        if (senderOpt.isPresent()) senderName = senderOpt.get().getUsername();
+                        Message fileBroadcast = new Message(CommandType.SEND_FILE, message.getUserId(),
+                                chatId + ";" + senderName + ";" + fileName + ";" + uniqueName);
+                        MessagePacket filePacket = new MessagePacket((byte) 0, System.currentTimeMillis(), fileBroadcast);
+
+                        for (ChatMember member : members) {
+                            ClientHandler memberHandler = ClientRegistry.getHandler((int) member.getUserId());
+                            if (memberHandler != null) {
+                                memberHandler.sendPacket(filePacket);
+                            }
+                        }
+
+                        return new Message(CommandType.STATUS_OK, message.getUserId(), "SILENT_OK");
+                    } catch (Exception e) {
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FILE_UPLOAD_FAILED");
+                    }
                 }
 
                 case DOWNLOAD_FILE -> {
                     try {
-                        long msgId = Long.parseLong(message.getText());
-                        org.example.DAO.impl.SQLiteAttachmentDAO attDao = new org.example.DAO.impl.SQLiteAttachmentDAO();
-                        java.util.List<org.example.models.Attachment> attachments = attDao.findByMessageId(msgId);
+                        String uniqueName = message.getText().trim();
+                        File fileToSend = new File("uploads", uniqueName);
+                        if (fileToSend.exists()) {
+                            byte[] fileBytes = Files.readAllBytes(fileToSend.toPath());
+                            String base64Data = java.util.Base64.getEncoder().encodeToString(fileBytes);
+                            String originalName = uniqueName.contains("_") ? uniqueName.substring(uniqueName.indexOf("_") + 1) : uniqueName;
+                            return new Message(CommandType.DOWNLOAD_FILE, message.getUserId(), originalName + ";" + base64Data);
+                        } else {
+                            return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FILE_NOT_FOUND");
+                        }
+                    } catch (Exception e) {
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:DOWNLOAD_FAILED");
+                    }
+                }
 
-                        if (!attachments.isEmpty()) {
-                            org.example.models.Attachment att = attachments.get(0);
-                            java.io.File file = new java.io.File(att.getFilePath());
-
-                            if (file.exists()) {
-                                byte[] fileBytes = java.nio.file.Files.readAllBytes(file.toPath());
-                                String base64Data = java.util.Base64.getEncoder().encodeToString(fileBytes);
-                                return new Message(CommandType.STATUS_OK, 0, att.getFileName() + ";" + base64Data);
+                case DELETE_CHAT -> {
+                    try {
+                        int chatId = Integer.parseInt(message.getText().trim());
+                        List<ChatMember> members = chatService.getChatMembers(chatId);
+                        chatService.deleteChat(chatId);
+                        System.out.println("[PROCESSOR] Chat ID " + chatId + " was permanently deleted via clean SQL CASCADE.");
+                        for (ChatMember member : members) {
+                            if (member.getUserId() == message.getUserId()) continue;
+                            ClientHandler peerHandler = ClientRegistry.getHandler((int) member.getUserId());
+                            if (peerHandler != null) {
+                                peerHandler.sendPacket(new MessagePacket((byte) 0, System.currentTimeMillis(),
+                                        new Message(CommandType.STATUS_OK, (int) member.getUserId(), "SUCCESS:REFRESH_CHATS")));
                             }
                         }
-                        return new Message(CommandType.STATUS_ERROR, 0, "ERROR:FILE_NOT_FOUND");
+                        return new Message(CommandType.STATUS_OK, message.getUserId(), "SUCCESS:REFRESH_CHATS");
                     } catch (Exception e) {
-                        e.printStackTrace();
-                        return new Message(CommandType.STATUS_ERROR, 0, "ERROR:DOWNLOAD_FAILED");
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FAILED_TO_DELETE_CHAT");
                     }
                 }
-                case SEND_FILE -> {
+
+                case GET_GROUP_MEMBERS -> {
                     try {
-                        String[] parts = message.getText().split(";", 3);
-                        if (parts.length >= 3) {
-                            long chatId = Long.parseLong(parts[0]);
-                            String fileName = parts[1];
-                            String base64Data = parts[2];
+                        int chatId = Integer.parseInt(message.getText().trim());
+                        String sql = """
+                            SELECT users.user_id, users.username, chat_members.role FROM chat_members
+                            JOIN users ON chat_members.user_id = users.user_id
+                            WHERE chat_members.chat_id = ?
+                            ORDER BY chat_members.role ASC, users.username ASC
+                        """;
 
-                            byte[] fileBytes = java.util.Base64.getDecoder().decode(base64Data);
-
-                            java.io.File uploadDir = new java.io.File("server_uploads");
-                            if (!uploadDir.exists()) uploadDir.mkdir();
-
-                            java.io.File savedFile = new java.io.File(uploadDir, System.currentTimeMillis() + "_" + fileName);
-                            java.nio.file.Files.write(savedFile.toPath(), fileBytes);
-
-                            org.example.models.Message msg = new org.example.models.Message();
-                            msg.setChatId(chatId);
-                            msg.setSenderId(currentUserId);
-                            msg.setContent("📎 " + fileName);
-                            msg.setStatus("SENT");
-                            msg.setType(org.example.models.MessageType.FILE);
-                            msg.setDeleted(false);
-
-                            msg = new org.example.DAO.impl.SQLiteMessageDAO().save(msg);
-
-                            org.example.models.Attachment attachment = new org.example.models.Attachment();
-                            attachment.setMessageId(msg.getId());
-                            attachment.setFileName(fileName);
-                            attachment.setFilePath(savedFile.getAbsolutePath());
-                            attachment.setFileSize(fileBytes.length);
-
-                            new org.example.DAO.impl.SQLiteAttachmentDAO().save(attachment);
-
-                            return new Message(CommandType.STATUS_OK, (int) chatId, "SUCCESS:FILE_DELIVERED");
+                        StringBuilder sb = new StringBuilder();
+                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
+                             java.sql.PreparedStatement stmt = conn.prepareStatement(sql)) {
+                            stmt.setInt(1, chatId);
+                            try (java.sql.ResultSet rs = stmt.executeQuery()) {
+                                while (rs.next()) {
+                                    sb.append(rs.getInt("user_id")).append(":::")
+                                            .append(rs.getString("username")).append(":::")
+                                            .append(rs.getString("role")).append("|||");
+                                }
+                            }
                         }
-                        return new Message(CommandType.STATUS_ERROR, 0, "ERROR:BAD_FORMAT");
+                        String responseText = sb.length() > 0 ? sb.substring(0, sb.length() - 3) : "";
+                        return new Message(CommandType.STATUS_OK, chatId, responseText);
                     } catch (Exception e) {
-                        e.printStackTrace();
-                        return new Message(CommandType.STATUS_ERROR, 0, "ERROR:FAILED_TO_SAVE_FILE");
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FAILED_TO_LOAD_MEMBERS");
                     }
                 }
-                case GET_CONTACTS -> {
-                    if (currentUserId == -1) return new Message(CommandType.STATUS_ERROR, 0, "ERROR:NOT_AUTHORIZED");
-                    StringBuilder sb = new StringBuilder();
-
-                    try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
-                         java.sql.PreparedStatement pstmt = conn.prepareStatement("SELECT user_id, username, status FROM users WHERE user_id != ?")) {
-
-                        pstmt.setInt(1, currentUserId);
-                        java.sql.ResultSet rs = pstmt.executeQuery();
-
-                        while (rs.next()) {
-                            int id = rs.getInt("user_id");
-                            String name = rs.getString("username");
-                            String status = rs.getString("status");
-                            sb.append(id).append(":::").append(name).append(":::").append(status).append("|||");
+                case PROMOTE_TO_ADMIN -> {
+                    try {
+                        String[] tokens = message.getText().split(";");
+                        int chatId = Integer.parseInt(tokens[0]);
+                        int targetUserId = Integer.parseInt(tokens[1]);
+                        String checkSql = "SELECT role FROM chat_members WHERE chat_id = ? AND user_id = ?";
+                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
+                             java.sql.PreparedStatement stmt = conn.prepareStatement(checkSql)) {
+                            stmt.setInt(1, chatId);
+                            stmt.setInt(2, message.getUserId());
+                            try (java.sql.ResultSet rs = stmt.executeQuery()) {
+                                if (!rs.next() || !"ADMIN".equalsIgnoreCase(rs.getString("role"))) {
+                                    return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:NOT_AN_ADMIN");
+                                }
+                            }
                         }
-                        return new Message(CommandType.STATUS_OK, 0, sb.toString());
+                        String updateSql = "UPDATE chat_members SET role = 'ADMIN' WHERE chat_id = ? AND user_id = ?";
+                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
+                             java.sql.PreparedStatement stmt = conn.prepareStatement(updateSql)) {
+                            stmt.setInt(1, chatId);
+                            stmt.setInt(2, targetUserId);
+                            stmt.executeUpdate();
+                        }
+                        return new Message(CommandType.STATUS_OK, chatId, "SUCCESS:USER_PROMOTED");
                     } catch (Exception e) {
-                        e.printStackTrace();
-                        return new Message(CommandType.STATUS_ERROR, 0, "ERROR:DB_FAIL");
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:PROMOTION_FAILED");
+                    }
+                }
+                case RENAME_CHAT -> {
+                    try {
+                        String[] tokens = message.getText().split(";", 2);
+                        int chatId = Integer.parseInt(tokens[0]);
+                        String newName = tokens[1].trim();
+                        String checkSql = "SELECT role FROM chat_members WHERE chat_id = ? AND user_id = ?";
+                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
+                             java.sql.PreparedStatement stmt = conn.prepareStatement(checkSql)) {
+                            stmt.setInt(1, chatId);
+                            stmt.setInt(2, message.getUserId());
+                            try (java.sql.ResultSet rs = stmt.executeQuery()) {
+                                if (!rs.next() || !"ADMIN".equalsIgnoreCase(rs.getString("role"))) {
+                                    return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:NOT_AN_ADMIN");
+                                }
+                            }
+                        }
+                        String updateSql = "UPDATE chats SET chat_name = ? WHERE chat_id = ?";
+                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
+                             java.sql.PreparedStatement stmt = conn.prepareStatement(updateSql)) {
+                            stmt.setString(1, newName);
+                            stmt.setInt(2, chatId);
+                            stmt.executeUpdate();
+                        }
+                        return new Message(CommandType.STATUS_OK, chatId, "SUCCESS:RENAME;" + newName);
+                    } catch (Exception e) {
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:RENAME_FAILED");
                     }
                 }
 
-                case CREATE_GROUP -> {
-                    if (currentUserId == -1) return new Message(CommandType.STATUS_ERROR, 0, "ERROR:NOT_AUTHORIZED");
-                    String[] parts = message.getText().split(";", 2);
-                    if (parts.length < 2) return new Message(CommandType.STATUS_ERROR, 0, "ERROR:BAD_FORMAT");
-
-                    String groupName = parts[0];
-                    String[] userIds = parts[1].split(",");
-
-                    org.example.DAO.impl.SQLiteChatDAO chatDao = new org.example.DAO.impl.SQLiteChatDAO();
-                    org.example.DAO.impl.SQLiteChatMemberDAO memberDao = new org.example.DAO.impl.SQLiteChatMemberDAO();
-
-                    org.example.models.Chat newGroup = new org.example.models.Chat();
-                    newGroup.setName(groupName);
-                    newGroup.setType(org.example.models.ChatType.GROUP);
-                    newGroup = chatDao.save(newGroup);
-
-                    org.example.models.ChatMember creator = new org.example.models.ChatMember();
-                    creator.setChatId(newGroup.getId());
-                    creator.setUserId(currentUserId);
-                    creator.setRole(org.example.models.ChatRole.ADMIN);
-                    memberDao.addMember(creator);
-
-                    for (String uidStr : userIds) {
-                        try {
-                            int uid = Integer.parseInt(uidStr.trim());
-                            org.example.models.ChatMember member = new org.example.models.ChatMember();
-                            member.setChatId(newGroup.getId());
-                            member.setUserId(uid);
-                            member.setRole(org.example.models.ChatRole.USER);
-                            memberDao.addMember(member);
-                        } catch (Exception ignored) {}
-                    }
-                    return new Message(CommandType.STATUS_OK, 0, "SUCCESS:GROUP_CREATED");
-                }
                 default -> {
-                    return new Message(CommandType.STATUS_ERROR, 0, "ERROR:NOT_IMPLEMENTED");
+                    return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:UNKNOWN_COMMAND");
                 }
             }
-
         } catch (Exception e) {
-            e.printStackTrace();
-            return new Message(CommandType.STATUS_ERROR, 0, "ERROR:" + e.getMessage().toUpperCase());
+            return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:INTERNAL_SERVER_ERROR");
         }
     }
 }
