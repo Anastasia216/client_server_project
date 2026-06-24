@@ -28,7 +28,7 @@ public class ClientRegistry {
     public static int getOnlineCount() {
         return activeClients.size();
     }
-}
+
     public static void broadcastUserStatusChange(long userId, String status) {
         try {
             Message statusMsg = new Message(
