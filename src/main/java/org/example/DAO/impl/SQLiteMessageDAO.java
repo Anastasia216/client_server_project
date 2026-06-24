@@ -123,4 +123,34 @@ public class SQLiteMessageDAO implements MessageDAO {
         }
         return message;
     }
+    @Override
+    public long countAll() {
+        String sql = "SELECT COUNT(*) FROM messages";
+        try (Connection conn = DBManager.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            if (rs.next()) return rs.getLong(1);
+        } catch (Exception e) { e.printStackTrace(); }
+        return 0;
+    }
+    @Override
+    public long getLastMessageId() {
+        String sql = "SELECT MAX(message_id) FROM messages";
+        try (Connection conn = DBManager.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            if (rs.next()) return rs.getLong(1);
+        } catch (Exception e) { e.printStackTrace(); }
+        return 0;
+    }
+    @Override
+    public void markMessagesAsRead(long chatId, long userId) {
+        String sql = "UPDATE messages SET status = 'READ' WHERE chat_id = ? AND sender_id != ?";
+        try (Connection conn = DBManager.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, chatId);
+            stmt.setLong(2, userId);
+            stmt.executeUpdate();
+        } catch (Exception e) { e.printStackTrace(); }
+    }
 }

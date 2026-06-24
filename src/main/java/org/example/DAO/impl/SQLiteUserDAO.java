@@ -279,4 +279,27 @@ public class SQLiteUserDAO implements UserDAO {
             return "ERROR:DATABASE_ERROR";
         }
     }
+    public void updateUserRole(int userId, String newRole) {
+        String sql = "UPDATE users SET role = ? WHERE user_id = ?";
+        try (Connection conn = DBManager.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, newRole);
+            stmt.setInt(2, userId);
+            stmt.executeUpdate();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void updateBlockStatus(int userId, boolean isBlocked) {
+        String sql = "UPDATE users SET is_blocked = ? WHERE user_id = ?";
+        try (Connection conn = DBManager.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, isBlocked ? 1 : 0);
+            stmt.setInt(2, userId);
+            stmt.executeUpdate();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 }

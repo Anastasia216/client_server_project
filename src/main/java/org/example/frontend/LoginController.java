@@ -47,15 +47,15 @@ public class LoginController {
                 NetworkClient.getInstance().setMyUserId(responseMessage.getUserId());
 
                 String responseText = responseMessage.getText();
+                String role = "USER";
                 if (responseText != null && responseText.contains(";")) {
                     String[] parts = responseText.split(";");
                     if (parts.length > 1) {
-                        NetworkClient.getInstance().setMyRole(parts[1]);
-                        System.out.println("[UI] Login successful. Assigned User ID: " + responseMessage.getUserId() + ", Role: " + parts[1]);
+                        role = parts[1];
                     }
-                } else {
-                    System.out.println("[UI] Login successful. Assigned User ID: " + responseMessage.getUserId());
                 }
+                NetworkClient.getInstance().setMyRole(role);
+                System.out.println("[UI] Login successful. Assigned User ID: " + responseMessage.getUserId() + ", Role: " + role);
                 SceneSwitcher.navigate(loginField, "ChatPanels.fxml");
             } else {
                 String errorText = responseMessage.getText();

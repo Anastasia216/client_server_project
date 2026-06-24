@@ -51,19 +51,22 @@ public class AuthService {
         }
         return Optional.empty();
     }
-    public void updateStatus(long userId, String status){
+
+    public void updateStatus(long userId, String status) {
         userDAO.findById(userId).ifPresent(user -> {
             user.setStatus(status);
             userDAO.update(user);
         });
     }
-    public void BlockUser(long userId){
+
+    public void BlockUser(long userId) {
         userDAO.findById(userId).ifPresent(user -> {
             user.setBlocked(true);
             user.setStatus(org.example.models.UserStatus.OFFLINE.name());
             userDAO.update(user);
         });
     }
+
     public String updateProfile(long userId, String newUsername, String newPhone) {
         if (userDAO instanceof org.example.DAO.impl.SQLiteUserDAO sqliteDAO) {
             if (!sqliteDAO.isUsernameUnique(newUsername, userId)) {
@@ -89,5 +92,11 @@ public class AuthService {
         return userDAO.findById(userId)
                 .map(u -> "PROFILE_INFO;" + u.getUsername() + ";" + u.getPhone())
                 .orElse("ERROR:USER_NOT_FOUND");
+    }
+
+    public String getUserRole(int userId) {
+        return userDAO.findById(userId)
+                .map(User::getRole)
+                .orElse("USER");
     }
 }

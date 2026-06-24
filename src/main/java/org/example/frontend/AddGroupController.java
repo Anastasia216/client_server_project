@@ -19,7 +19,7 @@ import java.util.List;
 public class AddGroupController {
 
     @FXML private TextField groupNameField;
-    @FXML private TextField searchUserField; // Наше поле пошуку
+    @FXML private TextField searchUserField;
     @FXML private ListView<ContactPreview> contactListView;
     @FXML private Button cancelButton;
     @FXML private Button createButton;

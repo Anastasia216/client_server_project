@@ -3,7 +3,7 @@ package org.example.service;
 import org.example.DAO.LogDAO;
 import org.example.DAO.UserDAO;
 import org.example.DAO.ChatDAO;
-import org.example.DAO.MessageDAO; // Не забудь додати імпорт
+import org.example.DAO.MessageDAO;
 import org.example.models.Log;
 import org.example.models.UserStatus;
 
@@ -23,10 +23,8 @@ public class LogAndStatsService {
     }
 
     public void logSystemEvent(String level, String message) {
-        Log log = new Log();
-        log.setLevel(level);
-        log.setMessage(message);
-        logDAO.save(log);
+        logDAO.saveLog(level, message);
+        System.out.println("[" + level + "] " + message);
     }
 
     public List<Log> getAllLogs() {

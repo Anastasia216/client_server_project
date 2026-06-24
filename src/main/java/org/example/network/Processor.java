@@ -1,23 +1,16 @@
 package org.example.network;
 
 import org.example.DAO.impl.*;
-import org.example.database.DBManager;
 import org.example.models.User;
 import org.example.models.Chat;
 import org.example.models.ChatMember;
 import org.example.protocol.CommandType;
 import org.example.protocol.Message;
 import org.example.protocol.MessagePacket;
-import org.example.service.AuthService;
-import org.example.service.MessageService;
-import org.example.service.ChatService;
-import org.example.service.FileService;
+import org.example.service.*;
 
 import java.io.File;
 import java.nio.file.Files;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.util.Optional;
 import java.util.List;
 import java.util.ArrayList;
@@ -28,6 +21,7 @@ public class Processor {
     private final ChatService chatService;
     private final FileService fileService;
     private final SQLiteUserDAO userDAO;
+    private final LogAndStatsService logAndStatsService;
 
     public Processor() {
         this.userDAO = new SQLiteUserDAO();
@@ -35,6 +29,20 @@ public class Processor {
         this.messageService = new MessageService(new SQLiteMessageDAO());
         this.chatService = new ChatService(new SQLiteChatDAO(), new SQLiteChatMemberDAO());
         this.fileService = new FileService(new SQLiteAttachmentDAO());
+        this.logAndStatsService = new LogAndStatsService(new SQLiteLogDAO(), userDAO, new SQLiteChatDAO(), new SQLiteMessageDAO());
+    }
+    public void broadcastLog(String logMessage) {
+        Message msg = new Message(CommandType.NEW_LOG, 0, logMessage);
+        MessagePacket packet = new MessagePacket((byte) 0, System.currentTimeMillis(), msg);
+
+        for (Integer uid : ClientRegistry.activeClients.keySet()) {
+            ClientHandler handler = ClientRegistry.getHandler(uid);
+            String role = authService.getUserRole(uid);
+
+            if (handler != null && "ADMIN".equalsIgnoreCase(role)) {
+                handler.sendPacket(packet);
+            }
+        }
     }
 
     public synchronized Message process(Message message) {
@@ -44,6 +52,8 @@ public class Processor {
                     Optional<User> userOpt = authService.loginFromRaw(message.getText());
                     if (userOpt.isPresent()) {
                         User user = userOpt.get();
+                        logAndStatsService.logSystemEvent("INFO", "User ID " + user.getUser_id() + " logged into the system.");
+                        broadcastLog("User ID " + user.getUser_id() + " logged into the system.");
                         return new Message(CommandType.STATUS_OK, (int) user.getUser_id(), "SUCCESS;" + user.getRole());
                     } else {
                         return new Message(CommandType.STATUS_ERROR, 0, "ERROR:INVALID_USERNAME_OR_PASSWORD_OR_BLOCKED");
@@ -51,8 +61,13 @@ public class Processor {
                 }
 
                 case REGISTER -> {
+                    String[] parts = message.getText().split(";");
+                    String username = parts[0];
                     Optional<User> registeredUserOpt = authService.registerFromRaw(message.getText());
                     if (registeredUserOpt.isPresent()) {
+                        String log = "User " + username + " registered a new account.";
+                        logAndStatsService.logSystemEvent("INFO", log);
+                        broadcastLog(log);
                         return new Message(CommandType.STATUS_OK, 0, "SUCCESS:REGISTRATION_COMPLETED");
                     } else {
                         return new Message(CommandType.STATUS_ERROR, 0, "ERROR:USERNAME_OR_PHONE_ALREADY_EXISTS");
@@ -89,62 +104,8 @@ public class Processor {
 
                 case GET_CHATS -> {
                     try {
-                        String sql = """
-                            SELECT chats.chat_id, chats.chat_name, chats.type, chat_members.role,
-                                   (SELECT COUNT(*) FROM messages 
-                                    WHERE messages.chat_id = chats.chat_id 
-                                      AND messages.sender_id != ? 
-                                      AND (messages.status != 'READ' OR messages.status IS NULL)) as unread_count
-                            FROM chats
-                            JOIN chat_members ON chats.chat_id = chat_members.chat_id
-                            WHERE chat_members.user_id = ?
-                        """;
-
-                        StringBuilder sb = new StringBuilder();
-                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
-                             java.sql.PreparedStatement stmt = conn.prepareStatement(sql)) {
-                            stmt.setLong(1, message.getUserId());
-                            stmt.setLong(2, message.getUserId());
-                            try (java.sql.ResultSet rs = stmt.executeQuery()) {
-                                while (rs.next()) {
-                                    int chatId = rs.getInt("chat_id");
-                                    String chatName = rs.getString("chat_name");
-                                    String chatType = rs.getString("type");
-                                    String userRole = rs.getString("role");
-                                    int unreadCount = rs.getInt("unread_count");
-
-                                    if (userRole == null || "OWNER".equalsIgnoreCase(userRole)) {
-                                        userRole = "ADMIN";
-                                    }
-                                    if ("PRIVATE".equalsIgnoreCase(chatType)) {
-                                        String privateNameSql = """
-                                            SELECT users.username, users.status FROM chat_members
-                                            JOIN users ON chat_members.user_id = users.user_id
-                                            WHERE chat_members.chat_id = ? AND chat_members.user_id != ?
-                                        """;
-                                        try (java.sql.PreparedStatement pStmt = conn.prepareStatement(privateNameSql)) {
-                                            pStmt.setInt(1, chatId);
-                                            pStmt.setLong(2, message.getUserId());
-                                            try (java.sql.ResultSet pRs = pStmt.executeQuery()) {
-                                                if (pRs.next()) {
-                                                    chatName = pRs.getString("username");
-                                                    String status = pRs.getString("status");
-                                                    if (status == null || status.trim().isEmpty()) {
-                                                        status = "OFFLINE";
-                                                    }
-                                                    chatName = chatName + " | " + status.toUpperCase();
-                                                }
-                                            }
-                                        }
-                                    }
-                                    sb.append(chatName).append(":::")
-                                            .append(chatType).append(":::")
-                                            .append(userRole).append(" (ID: ").append(chatId).append(")")
-                                            .append(":::").append(unreadCount).append(";");
-                                }
-                            }
-                        }
-                        return new Message(CommandType.STATUS_OK, message.getUserId(), sb.toString());
+                        String response = chatService.getUserChats(message.getUserId());
+                        return new Message(CommandType.STATUS_OK, message.getUserId(), response);
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FAILED_TO_LOAD_CHATS");
                     }
@@ -153,13 +114,7 @@ public class Processor {
                 case MARK_AS_READ -> {
                     try {
                         int chatId = Integer.parseInt(message.getText().trim());
-                        String updateSql = "UPDATE messages SET status = 'READ' WHERE chat_id = ? AND sender_id != ?";
-                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
-                             java.sql.PreparedStatement stmt = conn.prepareStatement(updateSql)) {
-                            stmt.setInt(1, chatId);
-                            stmt.setLong(2, message.getUserId());
-                            stmt.executeUpdate();
-                        }
+                        messageService.markChatAsRead(chatId, message.getUserId());
                         return new Message(CommandType.STATUS_OK, message.getUserId(), "SILENT_OK");
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:MARK_READ_FAILED");
@@ -170,52 +125,32 @@ public class Processor {
                     try {
                         String identifier = message.getText().trim();
                         Optional<User> targetUserOpt = userDAO.findByUsername(identifier);
+                        if (targetUserOpt.isEmpty()) targetUserOpt = userDAO.findByPhone(identifier);
+
                         if (targetUserOpt.isEmpty()) {
-                            targetUserOpt = userDAO.findByPhone(identifier);
-                        }
-
-                        if (targetUserOpt.isPresent()) {
-                            User targetUser = targetUserOpt.get();
-                            long myId = message.getUserId();
-                            long peerId = targetUser.getUser_id();
-
-                            if (peerId == myId) {
-                                return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:CANNOT_ADD_YOURSELF");
-                            }
-
-                            String checkPrivateChatSql = """
-                                SELECT c.chat_id FROM chats c
-                                JOIN chat_members cm1 ON c.chat_id = cm1.chat_id
-                                JOIN chat_members cm2 ON c.chat_id = cm2.chat_id
-                                WHERE c.type = 'PRIVATE' 
-                                  AND cm1.user_id = ? 
-                                  AND cm2.user_id = ?
-                            """;
-
-                            try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
-                                 java.sql.PreparedStatement stmt = conn.prepareStatement(checkPrivateChatSql)) {
-                                stmt.setLong(1, myId);
-                                stmt.setLong(2, peerId);
-
-                                try (java.sql.ResultSet rs = stmt.executeQuery()) {
-                                    if (rs.next()) {
-                                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:PRIVATE_CHAT_ALREADY_EXISTS");
-                                    }
-                                }
-                            }
-
-                            Chat privateChat = chatService.createChat("PrivateChat", org.example.models.ChatType.PRIVATE, myId);
-                            chatService.addUserToChat(privateChat.getId(), peerId);
-
-                            ClientHandler peerHandler = ClientRegistry.getHandler((int) peerId);
-                            if (peerHandler != null) {
-                                peerHandler.sendPacket(new MessagePacket((byte) 0, System.currentTimeMillis(),
-                                        new Message(CommandType.STATUS_OK, (int) peerId, "SUCCESS:REFRESH_CHATS")));
-                            }
-                            return new Message(CommandType.STATUS_OK, message.getUserId(), "SUCCESS:REFRESH_CHATS");
-                        } else {
                             return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:USER_NOT_FOUND");
                         }
+
+                        User targetUser = targetUserOpt.get();
+                        long myId = message.getUserId();
+                        long peerId = targetUser.getUser_id();
+
+                        if (peerId == myId) {
+                            return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:CANNOT_ADD_YOURSELF");
+                        }
+                        if (chatService.privateChatExists(myId, peerId)) {
+                            return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:PRIVATE_CHAT_ALREADY_EXISTS");
+                        }
+                        Chat privateChat = chatService.createChat("PrivateChat", org.example.models.ChatType.PRIVATE, myId);
+                        chatService.addUserToChat(privateChat.getId(), peerId);
+
+                        ClientHandler peerHandler = ClientRegistry.getHandler((int) peerId);
+                        if (peerHandler != null) {
+                            peerHandler.sendPacket(new MessagePacket((byte) 0, System.currentTimeMillis(),
+                                    new Message(CommandType.STATUS_OK, (int) peerId, "SUCCESS:REFRESH_CHATS")));
+                        }
+
+                        return new Message(CommandType.STATUS_OK, message.getUserId(), "SUCCESS:REFRESH_CHATS");
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:SEARCH_FAILED");
                     }
@@ -261,6 +196,9 @@ public class Processor {
                                         new Message(CommandType.STATUS_OK, uid, "SUCCESS:REFRESH_CHATS")));
                             }
                         }
+                        String log = "User ID " + message.getUserId() + " created a new group: " + groupName + " (ID: " + createdChat.getId() + ").";
+                        logAndStatsService.logSystemEvent("INFO", log);
+                        broadcastLog(log);
                         return new Message(CommandType.STATUS_OK, message.getUserId(), "SUCCESS:GROUP_CREATED");
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FAILED_TO_CREATE_CHAT");
@@ -270,18 +208,8 @@ public class Processor {
                 case GET_CHAT_HISTORY -> {
                     try {
                         int chatId = Integer.parseInt(message.getText());
-                        String sql = "SELECT users.username, messages.content FROM messages JOIN users ON messages.sender_id = users.user_id WHERE messages.chat_id = ? ORDER BY messages.message_id ASC";
-                        StringBuilder sb = new StringBuilder();
-                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
-                             java.sql.PreparedStatement stmt = conn.prepareStatement(sql)) {
-                            stmt.setInt(1, chatId);
-                            try (java.sql.ResultSet rs = stmt.executeQuery()) {
-                                while (rs.next()) {
-                                    sb.append(rs.getString("username")).append(":::").append(rs.getString("content")).append("\n");
-                                }
-                            }
-                        }
-                        return new Message(CommandType.GET_CHAT_HISTORY, chatId, sb.toString());
+                        String history = chatService.getChatHistory(chatId);
+                        return new Message(CommandType.GET_CHAT_HISTORY, chatId, history);
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FAILED_TO_LOAD_HISTORY");
                     }
@@ -312,8 +240,10 @@ public class Processor {
 
                 case DELETE_ACCOUNT -> {
                     String deleteResult = userDAO.deleteUserAccountFully(message.getUserId());
-                    if (deleteResult.startsWith("ERROR")) {
-                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), deleteResult);
+                    if (!deleteResult.startsWith("ERROR")) {
+                        String log = "User ID " + message.getUserId() + " deleted their account permanently.";
+                        logAndStatsService.logSystemEvent("WARN", log);
+                        broadcastLog(log);
                     }
                     return new Message(CommandType.STATUS_OK, message.getUserId(), deleteResult);
                 }
@@ -333,16 +263,11 @@ public class Processor {
                         Files.write(serverFile.toPath(), fileBytes);
 
                         messageService.saveMessage(chatId, message.getUserId(), "FILE_ATTACHMENT:" + fileName + "?" + uniqueName);
-                        long lastMsgId = 0;
-                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
-                             java.sql.PreparedStatement stmt = conn.prepareStatement("SELECT max(message_id) FROM messages")) {
-                            try (java.sql.ResultSet rs = stmt.executeQuery()) {
-                                if (rs.next()) lastMsgId = rs.getLong(1);
-                            }
-                        }
-
+                        long lastMsgId = messageService.getLastMessageId();
                         fileService.registerAttachment(lastMsgId, fileName, serverFile.getAbsolutePath(), fileBytes.length);
-
+                        String log = "User " + message.getUserId() + " sent file: " + fileName + " in chat " + chatId;
+                        logAndStatsService.logSystemEvent("INFO", log);
+                        broadcastLog(log);
                         List<ChatMember> members = chatService.getChatMembers(chatId);
                         String senderName = "Unknown";
                         Optional<User> senderOpt = userDAO.findById(message.getUserId());
@@ -394,6 +319,9 @@ public class Processor {
                                         new Message(CommandType.STATUS_OK, (int) member.getUserId(), "SUCCESS:REFRESH_CHATS")));
                             }
                         }
+                        String log = "Admin " + message.getUserId() + " deleted chat ID " + chatId + ".";
+                        logAndStatsService.logSystemEvent("WARN", log);
+                        broadcastLog(log);
                         return new Message(CommandType.STATUS_OK, message.getUserId(), "SUCCESS:REFRESH_CHATS");
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FAILED_TO_DELETE_CHAT");
@@ -403,23 +331,10 @@ public class Processor {
                 case GET_GROUP_MEMBERS -> {
                     try {
                         int chatId = Integer.parseInt(message.getText().trim());
-                        String sql = "SELECT users.user_id, users.username, chat_members.role FROM chat_members JOIN users ON chat_members.user_id = users.user_id WHERE chat_members.chat_id = ? ORDER BY chat_members.role ASC, users.username ASC";
-
-                        StringBuilder sb = new StringBuilder();
-                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
-                             java.sql.PreparedStatement stmt = conn.prepareStatement(sql)) {
-                            stmt.setInt(1, chatId);
-                            try (java.sql.ResultSet rs = stmt.executeQuery()) {
-                                while (rs.next()) {
-                                    sb.append(rs.getInt("user_id")).append(":::")
-                                            .append(rs.getString("username")).append(":::")
-                                            .append(rs.getString("role")).append("|||");
-                                }
-                            }
-                        }
-                        String responseText = sb.length() > 0 ? sb.substring(0, sb.length() - 3) : "";
+                        String responseText = chatService.getGroupMembersData(chatId);
                         return new Message(CommandType.STATUS_OK, chatId, responseText);
                     } catch (Exception e) {
+                        e.printStackTrace();
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FAILED_TO_LOAD_MEMBERS");
                     }
                 }
@@ -429,31 +344,26 @@ public class Processor {
                         int chatId = Integer.parseInt(parts[0]);
                         String targetIdentifier = parts[1].trim();
                         Optional<User> targetUserOpt = userDAO.findByUsername(targetIdentifier);
-                        if (targetUserOpt.isEmpty()) {
-                            targetUserOpt = userDAO.findByPhone(targetIdentifier);
-                        }
+                        if (targetUserOpt.isEmpty()) targetUserOpt = userDAO.findByPhone(targetIdentifier);
 
-                        if (targetUserOpt.isPresent()) {
-                            User targetUser = targetUserOpt.get();
-                            String checkSql = "SELECT 1 FROM chat_members WHERE chat_id = ? AND user_id = ?";
-                            try (java.sql.Connection conn = DBManager.getConnection();
-                                 PreparedStatement stmt = conn.prepareStatement(checkSql)) {
-                                stmt.setInt(1, chatId);
-                                stmt.setLong(2, targetUser.getUser_id());
-                                if (stmt.executeQuery().next()) {
-                                    return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:ALREADY_IN_CHAT");
-                                }
-                            }
-                            chatService.addUserToChat(chatId, targetUser.getUser_id());
-                            ClientHandler peerHandler = ClientRegistry.getHandler((int) targetUser.getUser_id());
+                        if (targetUserOpt.isEmpty()) {
+                            return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:USER_NOT_FOUND");
+                        }
+                        User targetUser = targetUserOpt.get();
+                        if (chatService.isMember(chatId, targetUser.getUser_id())) {
+                            return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:ALREADY_IN_CHAT");
+                        }
+                        chatService.addUserToChat(chatId, targetUser.getUser_id());
+                        String log = "User " + message.getUserId() + " added " + targetUser.getUsername() + " to chat " + chatId;
+                        logAndStatsService.logSystemEvent("INFO", log);
+                        broadcastLog(log);
+                        ClientHandler peerHandler = ClientRegistry.getHandler((int) targetUser.getUser_id());
                             if (peerHandler != null) {
                                 peerHandler.sendPacket(new MessagePacket((byte) 0, System.currentTimeMillis(),
                                         new Message(CommandType.STATUS_OK, (int) targetUser.getUser_id(), "SUCCESS:REFRESH_CHATS")));
                             }
                             return new Message(CommandType.STATUS_OK, chatId, "SUCCESS:USER_ADDED_TO_GROUP");
-                        } else {
-                            return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:USER_NOT_FOUND");
-                        }
+
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:ADD_MEMBER_FAILED");
                     }
@@ -464,42 +374,19 @@ public class Processor {
                         int chatId = Integer.parseInt(tokens[0]);
                         String targetUsername = tokens[1].trim();
 
-                        String checkSql = "SELECT role FROM chat_members WHERE chat_id = ? AND user_id = ?";
-                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
-                             java.sql.PreparedStatement stmt = conn.prepareStatement(checkSql)) {
-                            stmt.setInt(1, chatId);
-                            stmt.setInt(2, message.getUserId());
-                            try (java.sql.ResultSet rs = stmt.executeQuery()) {
-                                if (!rs.next() || !"ADMIN".equalsIgnoreCase(rs.getString("role"))) {
-                                    return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:NOT_AN_ADMIN");
-                                }
-                            }
+                        if (!chatService.isAdminOfChat(message.getUserId(), chatId)) {
+                            return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:NOT_AN_ADMIN");
                         }
-
-                        int targetUserId = -1;
-                        String findUserSql = "SELECT user_id FROM users WHERE username = ?";
-                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
-                             java.sql.PreparedStatement stmt = conn.prepareStatement(findUserSql)) {
-                            stmt.setString(1, targetUsername);
-                            try (java.sql.ResultSet rs = stmt.executeQuery()) {
-                                if (rs.next()) {
-                                    targetUserId = rs.getInt("user_id");
-                                }
-                            }
-                        }
-
-                        if (targetUserId == -1) {
+                        Optional<User> targetUser = userDAO.findByUsername(targetUsername);
+                        if (targetUser.isEmpty()) {
                             return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:USER_NOT_FOUND");
                         }
+                        int targetUserId = (int) targetUser.get().getUser_id();
+                        chatService.promoteUserToAdmin(chatId, targetUserId);
 
-                        String updateSql = "UPDATE chat_members SET role = 'ADMIN' WHERE chat_id = ? AND user_id = ?";
-                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
-                             java.sql.PreparedStatement stmt = conn.prepareStatement(updateSql)) {
-                            stmt.setInt(1, chatId);
-                            stmt.setInt(2, targetUserId);
-                            stmt.executeUpdate();
-                        }
-
+                        String log = "User " + message.getUserId() + " promoted " + targetUsername + " to admin in chat " + chatId;
+                        logAndStatsService.logSystemEvent("INFO", log);
+                        broadcastLog(log);
                         return new Message(CommandType.STATUS_OK, chatId, "SUCCESS:USER_PROMOTED");
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:PROMOTION_FAILED");
@@ -508,36 +395,13 @@ public class Processor {
                 case LEAVE_CHAT -> {
                     try {
                         int chatId = Integer.parseInt(message.getText().trim());
-                        String checkAdminSql = """
-                            SELECT role, 
-                                   (SELECT COUNT(*) FROM chat_members WHERE chat_id = ? AND role = 'ADMIN') as admin_count
-                            FROM chat_members 
-                            WHERE chat_id = ? AND user_id = ?
-                        """;
-
-                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
-                             java.sql.PreparedStatement stmt = conn.prepareStatement(checkAdminSql)) {
-                            stmt.setInt(1, chatId);
-                            stmt.setInt(2, chatId);
-                            stmt.setLong(3, message.getUserId());
-
-                            try (java.sql.ResultSet rs = stmt.executeQuery()) {
-                                if (rs.next()) {
-                                    String role = rs.getString("role");
-                                    int adminCount = rs.getInt("admin_count");
-                                    if ("ADMIN".equalsIgnoreCase(role) && adminCount <= 1) {
-                                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:SOLE_ADMIN");
-                                    }
-                                }
-                            }
+                        if (chatService.isSoleAdmin(chatId, message.getUserId())) {
+                            return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:SOLE_ADMIN");
                         }
-                        String sql = "DELETE FROM chat_members WHERE chat_id = ? AND user_id = ?";
-                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
-                             java.sql.PreparedStatement stmt = conn.prepareStatement(sql)) {
-                            stmt.setInt(1, chatId);
-                            stmt.setLong(2, message.getUserId());
-                            stmt.executeUpdate();
-                        }
+                        chatService.leaveChat(chatId, message.getUserId());
+                        String log = "User " + message.getUserId() + " left chat " + chatId;
+                        logAndStatsService.logSystemEvent("INFO", log);
+                        broadcastLog(log);
                         return new Message(CommandType.STATUS_OK, message.getUserId(), "SUCCESS:REFRESH_CHATS");
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FAILED_TO_LEAVE_CHAT");
@@ -548,24 +412,14 @@ public class Processor {
                         String[] tokens = message.getText().split(";");
                         int chatId = Integer.parseInt(tokens[0]);
                         String newName = tokens[1].trim();
-                        String checkSql = "SELECT role FROM chat_members WHERE chat_id = ? AND user_id = ?";
-                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
-                             java.sql.PreparedStatement stmt = conn.prepareStatement(checkSql)) {
-                            stmt.setInt(1, chatId);
-                            stmt.setInt(2, message.getUserId());
-                            try (java.sql.ResultSet rs = stmt.executeQuery()) {
-                                if (!rs.next() || !"ADMIN".equalsIgnoreCase(rs.getString("role"))) {
-                                    return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:NOT_AN_ADMIN");
-                                }
-                            }
+
+                        if (!chatService.isAdminOfChat(message.getUserId(), chatId)) {
+                            return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:NOT_AN_ADMIN");
                         }
-                        String updateSql = "UPDATE chats SET chat_name = ? WHERE chat_id = ?";
-                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
-                             java.sql.PreparedStatement stmt = conn.prepareStatement(updateSql)) {
-                            stmt.setString(1, newName);
-                            stmt.setInt(2, chatId);
-                            stmt.executeUpdate();
-                        }
+                        chatService.renameChat(chatId, newName);
+                        String log = "User " + message.getUserId() + " renamed chat " + chatId + " to '" + newName + "'";
+                        logAndStatsService.logSystemEvent("INFO", log);
+                        broadcastLog(log);
                         return new Message(CommandType.STATUS_OK, chatId, "SUCCESS:RENAME;" + newName);
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:RENAME_FAILED");
@@ -577,48 +431,28 @@ public class Processor {
                         int chatId = Integer.parseInt(tokens[0]);
                         String targetUsername = tokens[1].trim();
 
-                        String checkSql = "SELECT role FROM chat_members WHERE chat_id = ? AND user_id = ?";
-                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
-                             java.sql.PreparedStatement stmt = conn.prepareStatement(checkSql)) {
-                            stmt.setInt(1, chatId);
-                            stmt.setInt(2, message.getUserId());
-                            try (java.sql.ResultSet rs = stmt.executeQuery()) {
-                                if (!rs.next() || !"ADMIN".equalsIgnoreCase(rs.getString("role"))) {
-                                    return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:NOT_AN_ADMIN");
-                                }
-                            }
+                        if (!chatService.isAdminOfChat(message.getUserId(), chatId)) {
+                            return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:NOT_AN_ADMIN");
                         }
 
-                        int targetUserId = -1;
-                        String findUserSql = "SELECT user_id FROM users WHERE username = ?";
-                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
-                             java.sql.PreparedStatement stmt = conn.prepareStatement(findUserSql)) {
-                            stmt.setString(1, targetUsername);
-                            try (java.sql.ResultSet rs = stmt.executeQuery()) {
-                                if (rs.next()) {
-                                    targetUserId = rs.getInt("user_id");
-                                }
-                            }
-                        }
-
-                        if (targetUserId == -1) {
+                        Optional<User> targetUser = userDAO.findByUsername(targetUsername);
+                        if (targetUser.isEmpty()) {
                             return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:USER_NOT_FOUND");
                         }
 
-                        String deleteSql = "DELETE FROM chat_members WHERE chat_id = ? AND user_id = ?";
-                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
-                             java.sql.PreparedStatement stmt = conn.prepareStatement(deleteSql)) {
-                            stmt.setInt(1, chatId);
-                            stmt.setInt(2, targetUserId);
-                            stmt.executeUpdate();
+                        int targetUserId = (int) targetUser.get().getUser_id();
+
+                        if (targetUserId == message.getUserId()) {
+                            return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:CANNOT_REMOVE_SELF");
                         }
+                        chatService.removeUserFromGroup(chatId, targetUserId);
 
                         ClientHandler peerHandler = ClientRegistry.getHandler(targetUserId);
                         if (peerHandler != null) {
                             peerHandler.sendPacket(new MessagePacket((byte) 0, System.currentTimeMillis(),
                                     new Message(CommandType.STATUS_OK, targetUserId, "SUCCESS:REFRESH_CHATS")));
                         }
-
+                        broadcastLog("Admin " + message.getUserId() + " removed " + targetUsername + " from chat " + chatId);
                         return new Message(CommandType.STATUS_OK, chatId, "SUCCESS:USER_REMOVED");
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:REMOVE_FAILED");
@@ -627,16 +461,9 @@ public class Processor {
 
                 case GET_ADMIN_STATS -> {
                     try {
-                        int onlineCount = ClientRegistry.getOnlineCount();
-                        long totalUsers = 0;
-                        long totalMessages = 0;
-                        try (Connection conn = DBManager.getConnection()) {
-                            ResultSet rsUsers = conn.createStatement().executeQuery("SELECT COUNT(*) FROM users");
-                            if (rsUsers.next()) totalUsers = rsUsers.getLong(1);
-
-                            ResultSet rsMsgs = conn.createStatement().executeQuery("SELECT COUNT(*) FROM messages");
-                            if (rsMsgs.next()) totalMessages = rsMsgs.getLong(1);
-                        }
+                        long onlineCount = logAndStatsService.getOnlineUsersCount();
+                        int totalUsers = logAndStatsService.getTotalUsersCount();
+                        long totalMessages = messageService.getTotalMessagesCount();
                         String stats = onlineCount + ";" + totalUsers + ";" + totalMessages;
                         return new Message(CommandType.GET_ADMIN_STATS, message.getUserId(), stats);
                     } catch (Exception e) {
@@ -646,16 +473,14 @@ public class Processor {
 
                 case GET_ALL_USERS -> {
                     try {
+                        List<User> users = userDAO.findAll();
                         StringBuilder sb = new StringBuilder();
-                        try (Connection conn = DBManager.getConnection()) {
-                            ResultSet rs = conn.createStatement().executeQuery("SELECT user_id, status, role, is_blocked FROM users");
-                            while (rs.next()) {
-                                boolean isBlocked = rs.getInt("is_blocked") == 1;
-                                sb.append(rs.getInt("user_id")).append(",")
-                                        .append(rs.getString("status")).append(",")
-                                        .append(rs.getString("role")).append(",")
-                                        .append(isBlocked).append(";");
-                            }
+
+                        for (User u : users) {
+                            sb.append(u.getUser_id()).append(",")
+                                    .append(u.getStatus()).append(",")
+                                    .append(u.getRole()).append(",")
+                                    .append(u.isBlocked()).append(";");
                         }
                         return new Message(CommandType.GET_ALL_USERS, message.getUserId(), sb.toString());
                     } catch (Exception e) {
@@ -668,12 +493,11 @@ public class Processor {
                         String[] tokens = message.getText().split(";");
                         int targetId = Integer.parseInt(tokens[0]);
                         String newRole = tokens[1];
-                        try (Connection conn = DBManager.getConnection();
-                             PreparedStatement stmt = conn.prepareStatement("UPDATE users SET role = ? WHERE user_id = ?")) {
-                            stmt.setString(1, newRole);
-                            stmt.setInt(2, targetId);
-                            stmt.executeUpdate();
-                        }
+                        userDAO.updateUserRole(targetId, newRole);
+
+                        String log = "Admin " + message.getUserId() + " changed role of user " + targetId + " to " + newRole;
+                        logAndStatsService.logSystemEvent("INFO", log);
+                        broadcastLog(log);
                         return new Message(CommandType.STATUS_OK, message.getUserId(), "SUCCESS:ROLE_CHANGED");
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:ROLE_CHANGE_FAILED");
@@ -685,13 +509,12 @@ public class Processor {
                         String[] tokens = message.getText().split(";");
                         int targetId = Integer.parseInt(tokens[0]);
                         boolean isBlocked = Boolean.parseBoolean(tokens[1]);
-                        int blockVal = isBlocked ? 1 : 0;
-                        try (Connection conn = DBManager.getConnection();
-                             PreparedStatement stmt = conn.prepareStatement("UPDATE users SET is_blocked = ? WHERE user_id = ?")) {
-                            stmt.setInt(1, blockVal);
-                            stmt.setInt(2, targetId);
-                            stmt.executeUpdate();
-                        }
+                        userDAO.updateBlockStatus(targetId, isBlocked);
+
+                        String log = "Admin " + message.getUserId() + (isBlocked ? " blocked " : " unblocked ") + "user " + targetId;
+                        logAndStatsService.logSystemEvent("INFO", log);
+                        broadcastLog(log);
+
                         return new Message(CommandType.STATUS_OK, message.getUserId(), "SUCCESS:USER_BLOCKED");
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:BLOCK_FAILED");

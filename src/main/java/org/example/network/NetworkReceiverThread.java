@@ -42,7 +42,7 @@ public class NetworkReceiverThread implements Runnable {
                                 if (controllerName.equals("LoginController") || controllerName.equals("RegisterController")) {
                                     Method method = controller.getClass().getMethod("handleAuthResponse", Message.class);
                                     method.invoke(controller, responseMessage);
-                                } else if (controllerName.equals("ChatPanels") || controllerName.equals("AddGroupController") || controllerName.equals("AddContactController") || controllerName.equals("UserInfoController")) { // 🌟 ДОДАНО UserInfoController СЮДI
+                                } else if (controllerName.equals("ChatPanels") || controllerName.equals("AddGroupController") || controllerName.equals("AddContactController") || controllerName.equals("UserInfoController")) {
                                     Method method = controller.getClass().getMethod("handleSystemStatus", Message.class);
                                     method.invoke(controller, responseMessage);
                                 }
@@ -91,6 +91,16 @@ public class NetworkReceiverThread implements Runnable {
                                 if (controllerName.equals("AdminPage")) {
                                     Method method = controller.getClass().getMethod("handleAdminResponse", Message.class);
                                     method.invoke(controller, responseMessage);
+                                }
+                            }
+                            case NEW_LOG -> {
+                                if (controllerName.equals("AdminPage")) {
+                                    try {
+                                        Method method = controller.getClass().getMethod("handleAdminResponse", Message.class);
+                                        method.invoke(controller, responseMessage);
+                                    } catch (Exception e) {
+                                        System.err.println("[UI_BRIDGE ERROR] Failed to invoke NEW_LOG: " + e.getMessage());
+                                    }
                                 }
                             }
 

@@ -10,4 +10,7 @@ public interface MessageDAO {
     List<Message> findByChatId(long chatId);
     void update(Message message);
     void delete(long id);
+    long countAll();
+    long getLastMessageId();
+    void markMessagesAsRead(long chatId, long userId);
 }

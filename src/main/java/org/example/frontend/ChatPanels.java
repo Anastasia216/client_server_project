@@ -51,6 +51,7 @@ public class ChatPanels {
 
     @FXML
     public void initialize() {
+        System.out.println("[DEBUG] ChatPanels initialized. Role from NetworkClient: " + NetworkClient.getInstance().getMyRole());
         NetworkClient.getInstance().setActiveController(this);
         NetworkClient.getInstance().sendGetChatsRequest();
 
@@ -866,6 +867,7 @@ public class ChatPanels {
         leftMenuPopup.setAutoHide(true);
         VBox popupMenu = new VBox(5);
         popupMenu.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 12; -fx-padding: 8; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.15), 10, 0, 0, 4);");
+        String userRole = NetworkClient.getInstance().getMyRole();
 
         Button btnInfo = new Button("Info");
         btnInfo.setStyle("-fx-background-color: transparent; -fx-text-fill: #1c1c1e; -fx-font-size: 14px; -fx-cursor: hand; -fx-pref-width: 120; -fx-alignment: CENTER_LEFT;");
@@ -874,21 +876,24 @@ public class ChatPanels {
             openModalWindow("UresInfo.fxml", "My Profile");
         });
 
-        Button btnAdmin = new Button("Admin Panel");
-        btnAdmin.setStyle("-fx-background-color: transparent; -fx-text-fill: #10B981; -fx-font-weight: bold; -fx-font-size: 14px; -fx-cursor: hand; -fx-pref-width: 120; -fx-alignment: CENTER_LEFT;");
-        btnAdmin.setOnAction(e -> {
-            leftMenuPopup.hide();
-            try {
-                FXMLLoader loader = new FXMLLoader(getClass().getResource("/AdminPage.fxml"));
-                Parent root = loader.load();
-                Stage stage = (Stage) menuLeftHeaderButton.getScene().getWindow();
-                stage.setScene(new Scene(root));
-                stage.show();
-            } catch (IOException ex) {
-                System.err.println("[ERROR] Failed to load AdminPage.fxml: " + ex.getMessage());
-                ex.printStackTrace();
-            }
-        });
+        if ("ADMIN".equalsIgnoreCase(userRole)) {
+            Button btnAdmin = new Button("Admin Panel");
+            btnAdmin.setStyle("-fx-background-color: transparent; -fx-text-fill: #10B981; -fx-font-weight: bold; -fx-font-size: 14px; -fx-cursor: hand; -fx-pref-width: 120; -fx-alignment: CENTER_LEFT;");
+            btnAdmin.setOnAction(e -> {
+                leftMenuPopup.hide();
+                try {
+                    FXMLLoader loader = new FXMLLoader(getClass().getResource("/AdminPage.fxml"));
+                    Parent root = loader.load();
+                    Stage stage = (Stage) menuLeftHeaderButton.getScene().getWindow();
+                    stage.setScene(new Scene(root));
+                    stage.show();
+                } catch (IOException ex) {
+                    System.err.println("[ERROR] Failed to load AdminPage.fxml: " + ex.getMessage());
+                    ex.printStackTrace();
+                }
+            });
+            popupMenu.getChildren().add(btnAdmin);
+        }
 
         Button btnLogout = new Button("Log Out");
         btnLogout.setStyle("-fx-background-color: transparent; -fx-text-fill: #ef4444; -fx-font-size: 14px; -fx-font-weight: bold; -fx-cursor: hand; -fx-pref-width: 120; -fx-alignment: CENTER_LEFT;");
@@ -898,9 +903,8 @@ public class ChatPanels {
             SceneSwitcher.navigate(menuLeftHeaderButton, "Login.fxml");
         });
 
-        popupMenu.getChildren().addAll(btnInfo, btnAdmin, btnLogout);
+        popupMenu.getChildren().addAll(btnInfo, btnLogout);
 
-        String userRole = System.getProperty("user.role", "USER");
         if (!"ADMIN".equalsIgnoreCase(userRole)) {
             Button btnDeleteAcc = new Button("Delete Account");
             btnDeleteAcc.setStyle("-fx-background-color: transparent; -fx-text-fill: #b91c1c; -fx-font-size: 14px; -fx-font-weight: bold; -fx-cursor: hand; -fx-pref-width: 120; -fx-alignment: CENTER_LEFT;");
