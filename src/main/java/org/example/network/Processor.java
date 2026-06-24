@@ -90,7 +90,11 @@ public class Processor {
                 case GET_CHATS -> {
                     try {
                         String sql = """
-                            SELECT chats.chat_id, chats.chat_name, chats.type, chat_members.role 
+                            SELECT chats.chat_id, chats.chat_name, chats.type, chat_members.role,
+                                   (SELECT COUNT(*) FROM messages 
+                                    WHERE messages.chat_id = chats.chat_id 
+                                      AND messages.sender_id != ? 
+                                      AND (messages.status != 'READ' OR messages.status IS NULL)) as unread_count
                             FROM chats
                             JOIN chat_members ON chats.chat_id = chat_members.chat_id
                             WHERE chat_members.user_id = ?
@@ -100,12 +104,15 @@ public class Processor {
                         try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
                              java.sql.PreparedStatement stmt = conn.prepareStatement(sql)) {
                             stmt.setLong(1, message.getUserId());
+                            stmt.setLong(2, message.getUserId());
                             try (java.sql.ResultSet rs = stmt.executeQuery()) {
                                 while (rs.next()) {
                                     int chatId = rs.getInt("chat_id");
                                     String chatName = rs.getString("chat_name");
                                     String chatType = rs.getString("type");
                                     String userRole = rs.getString("role");
+                                    int unreadCount = rs.getInt("unread_count");
+
                                     if (userRole == null || "OWNER".equalsIgnoreCase(userRole)) {
                                         userRole = "ADMIN";
                                     }
@@ -132,13 +139,30 @@ public class Processor {
                                     }
                                     sb.append(chatName).append(":::")
                                             .append(chatType).append(":::")
-                                            .append(userRole).append(" (ID: ").append(chatId).append(");");
+                                            .append(userRole).append(" (ID: ").append(chatId).append(")")
+                                            .append(":::").append(unreadCount).append(";");
                                 }
                             }
                         }
                         return new Message(CommandType.STATUS_OK, message.getUserId(), sb.toString());
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FAILED_TO_LOAD_CHATS");
+                    }
+                }
+
+                case MARK_AS_READ -> {
+                    try {
+                        int chatId = Integer.parseInt(message.getText().trim());
+                        String updateSql = "UPDATE messages SET status = 'READ' WHERE chat_id = ? AND sender_id != ?";
+                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
+                             java.sql.PreparedStatement stmt = conn.prepareStatement(updateSql)) {
+                            stmt.setInt(1, chatId);
+                            stmt.setLong(2, message.getUserId());
+                            stmt.executeUpdate();
+                        }
+                        return new Message(CommandType.STATUS_OK, message.getUserId(), "SILENT_OK");
+                    } catch (Exception e) {
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:MARK_READ_FAILED");
                     }
                 }
 

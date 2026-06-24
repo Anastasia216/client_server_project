@@ -45,6 +45,7 @@ public class ChatPanels {
     private String currentChatType = "PRIVATE";
     private String currentChatUserRole = "USER";
     private final java.util.List<String> allChats = new java.util.ArrayList<>();
+    private boolean isUpdatingList = false;
 
     @FXML private Button adminPanelButton;
 
@@ -65,6 +66,12 @@ public class ChatPanels {
                 parseAndOpenChat(newValue);
             }
         });
+
+        if (messagesVBox != null && chatScrollPane != null) {
+            messagesVBox.heightProperty().addListener((observable, oldValue, newValue) -> {
+                chatScrollPane.setVvalue(1.0);
+            });
+        }
 
         setupLeftMenuPopup();
         setupFabPopup();
@@ -107,6 +114,10 @@ public class ChatPanels {
         ChatListView.getItems().setAll(filtered);
     }
     private void parseAndOpenChat(String selectedItem) {
+        if (isUpdatingList) return;
+
+        int selectedIndex = ChatListView.getSelectionModel().getSelectedIndex();
+
         try {
             String cleanItem = selectedItem.trim();
             String chatName = "";
@@ -116,7 +127,8 @@ public class ChatPanels {
                 chatName = metadata[0].trim();
                 this.currentChatType = metadata[1].trim();
 
-                String[] roleAndId = metadata[2].split(" \\(ID: ");
+                String roleAndIdRaw = metadata[2].trim();
+                String[] roleAndId = roleAndIdRaw.split(" \\(ID: ");
                 this.currentChatUserRole = roleAndId[0].trim();
                 this.currentActiveChatId = Integer.parseInt(roleAndId[1].replace(")", "").trim());
             } else if (cleanItem.contains(" (ID: ")) {
@@ -160,6 +172,37 @@ public class ChatPanels {
 
         if (currentActiveChatId != -1) {
             NetworkClient.getInstance().sendGetHistoryRequest(currentActiveChatId);
+
+            Message readMsg = new Message(CommandType.MARK_AS_READ, NetworkClient.getInstance().getMyUserId(), String.valueOf(currentActiveChatId));
+            NetworkClient.getInstance().sendPacket(new org.example.protocol.MessagePacket((byte)1, System.currentTimeMillis(), readMsg));
+
+            for (int i = 0; i < allChats.size(); i++) {
+                String row = allChats.get(i);
+                if (row.contains("(ID: " + currentActiveChatId + ")")) {
+                    String[] parts = row.split(":::");
+                    if (parts.length == 4) {
+                        String updatedRow = parts[0] + ":::" + parts[1] + ":::" + parts[2] + ":::0;";
+                        allChats.set(i, updatedRow);
+                        break;
+                    }
+                }
+            }
+
+            Platform.runLater(() -> {
+                isUpdatingList = true;
+
+                if (searchField != null && !searchField.getText().trim().isEmpty()) {
+                    filterChats(searchField.getText().trim().toLowerCase());
+                } else {
+                    ChatListView.getItems().setAll(allChats);
+                }
+
+                if (selectedIndex >= 0 && selectedIndex < ChatListView.getItems().size()) {
+                    ChatListView.getSelectionModel().select(selectedIndex);
+                }
+
+                isUpdatingList = false;
+            });
         }
     }
 
@@ -396,11 +439,14 @@ public class ChatPanels {
                     row.setAlignment(Pos.CENTER_LEFT);
 
                     Label nameLbl = new Label(uName);
-                    nameLbl.setStyle("-fx-font-weight: bold; -fx-text-fill: #1c1c1e; -fx-font-size: 18px;");
-                    Label roleLbl = new Label("[" + uRole + "]");
-                    roleLbl.setStyle("-fx-text-fill: " + ("ADMIN".equalsIgnoreCase(uRole) ? "#ef4444" : "#6c757d") + "; -fx-font-size: 12px;");
+                    nameLbl.setStyle("-fx-font-weight: bold; -fx-text-fill: #1c1c1e; -fx-font-size: 16px;");
+                    row.getChildren().add(nameLbl);
 
-                    row.getChildren().addAll(nameLbl, roleLbl);
+                    if ("ADMIN".equalsIgnoreCase(uRole)) {
+                        Label roleLbl = new Label("Admin");
+                        roleLbl.setStyle("-fx-text-fill: #8e8e93; -fx-font-size: 13px; -fx-font-style: italic;");
+                        row.getChildren().add(roleLbl);
+                    }
 
                     if ("ADMIN".equalsIgnoreCase(currentChatUserRole) && "USER".equalsIgnoreCase(uRole)) {
                         Region spacer = new Region();
@@ -563,8 +609,6 @@ public class ChatPanels {
                     String textContent = parts[1].trim();
                     if (textContent.startsWith("FILE_ATTACHMENT:")) {
                         addMessageBubble(senderName, textContent.replace("FILE_ATTACHMENT:", ""), "FILE");
-                    } else if (textContent.startsWith("📎 FILE:")) {
-                        addMessageBubble(senderName, textContent.replace("📎 FILE:", ""), "FILE");
                     } else if (textContent.startsWith("FILE:")) {
                         addMessageBubble(senderName, textContent.replace("FILE:", ""), "FILE");
                     } else {
@@ -572,7 +616,7 @@ public class ChatPanels {
                     }
                 }
             }
-            scrollMessagesToBottom();
+            messagesVBox.layout();
         });
     }
 
@@ -591,6 +635,10 @@ public class ChatPanels {
             if (msgChatId == currentActiveChatId) {
                 addMessageBubble(tokens[1], tokens[2], "TEXT");
                 scrollMessagesToBottom();
+                Message readMsg = new Message(CommandType.MARK_AS_READ, NetworkClient.getInstance().getMyUserId(), String.valueOf(currentActiveChatId));
+                NetworkClient.getInstance().sendPacket(new org.example.protocol.MessagePacket((byte)1, System.currentTimeMillis(), readMsg));
+            } else {
+                NetworkClient.getInstance().sendGetChatsRequest();
             }
         });
     }
@@ -777,11 +825,10 @@ public class ChatPanels {
     }
 
     private void scrollMessagesToBottom() {
-        if (messagesVBox.getParent() instanceof ScrollPane) {
-            ((ScrollPane) messagesVBox.getParent()).setVvalue(1.0);
+        if (chatScrollPane != null) {
+            Platform.runLater(() -> chatScrollPane.setVvalue(1.0));
         }
     }
-
     private void setupLeftMenuPopup() {
         Popup leftMenuPopup = new Popup();
         leftMenuPopup.setAutoHide(true);
@@ -884,17 +931,23 @@ public class ChatPanels {
                     root.setStyle("-fx-padding: 6px 12px;");
 
                     String displayName = item;
+                    int unreadCount = 0;
+
                     if (item.contains(":::")) {
-                        displayName = item.split(":::")[0];
+                        String[] tokens = item.split(":::");
+                        displayName = tokens[0];
+                        if (tokens.length == 4) {
+                            unreadCount = Integer.parseInt(tokens[3].replace(";", "").trim());
+                        }
                     }
                     if (displayName.contains(" (ID:")) {
                         displayName = displayName.split(" \\(ID:")[0];
                     }
-
                     displayName = displayName.trim();
 
                     Label nameLabel = new Label();
                     nameLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #1c1c1e; -fx-font-size: 16px;");
+                    root.getChildren().add(nameLabel);
 
                     if (displayName.contains(" | ")) {
                         String[] parts = displayName.split(" \\| ");
@@ -903,27 +956,28 @@ public class ChatPanels {
 
                         nameLabel.setText(realName);
 
-                        Label statusLabel = new Label(statusText.equalsIgnoreCase("ONLINE") ? "Online" : "Offline");
-
-                        selectedProperty().addListener((obs, wasSelected, isSelected) -> {
-                            if (isSelected) {
-                                statusLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #e2e8f0;");
-                            } else {
-                                statusLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: " +
-                                        (statusText.equalsIgnoreCase("ONLINE") ? "#0078FF;" : "#6c757d;"));
-                            }
-                        });
-
-                        statusLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: " +
-                                (statusText.equalsIgnoreCase("ONLINE") ? "#0078FF;" : "#6c757d;"));
+                        if (unreadCount > 0) {
+                            Label badge = new Label(String.valueOf(unreadCount));
+                            badge.setStyle("-fx-background-color: #0078FF; -fx-text-fill: white; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 2 6 2 6; -fx-background-radius: 10;");
+                            root.getChildren().add(badge);
+                        }
 
                         Region spacer = new Region();
                         HBox.setHgrow(spacer, Priority.ALWAYS);
+                        root.getChildren().add(spacer);
 
-                        root.getChildren().addAll(nameLabel, spacer, statusLabel);
+                        Label statusLabel = new Label(statusText.equalsIgnoreCase("ONLINE") ? "Online" : "Offline");
+                        statusLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: " + (statusText.equalsIgnoreCase("ONLINE") ? "#0078FF;" : "#6c757d;"));
+
+                        root.getChildren().add(statusLabel);
                     } else {
                         nameLabel.setText(displayName);
-                        root.getChildren().add(nameLabel);
+
+                        if (unreadCount > 0) {
+                            Label badge = new Label(String.valueOf(unreadCount));
+                            badge.setStyle("-fx-background-color: #0078FF; -fx-text-fill: white; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 2 6 2 6; -fx-background-radius: 10;");
+                            root.getChildren().add(badge);
+                        }
                     }
 
                     setGraphic(root);
