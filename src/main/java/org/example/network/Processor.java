@@ -89,25 +89,52 @@ public class Processor {
 
                 case GET_CHATS -> {
                     try {
-                        List<Chat> userChats = chatService.getChatsForUser(message.getUserId());
-                        StringBuilder sb = new StringBuilder();
+                        String sql = """
+                            SELECT chats.chat_id, chats.chat_name, chats.type, chat_members.role 
+                            FROM chats
+                            JOIN chat_members ON chats.chat_id = chat_members.chat_id
+                            WHERE chat_members.user_id = ?
+                        """;
 
-                        for (Chat chat : userChats) {
-                            String chatName = chat.getName();
-                            if (chat.getType() == org.example.models.ChatType.PRIVATE) {
-                                String sql = "SELECT username FROM users JOIN chat_members ON users.user_id = chat_members.user_id WHERE chat_members.chat_id = ? AND users.user_id != ?";
-                                try (Connection conn = DBManager.getConnection();
-                                     PreparedStatement stmt = conn.prepareStatement(sql)) {
-                                    stmt.setLong(1, chat.getId());
-                                    stmt.setLong(2, message.getUserId());
-                                    try (ResultSet rs = stmt.executeQuery()) {
-                                        if (rs.next()) {
-                                            chatName = rs.getString("username");
+                        StringBuilder sb = new StringBuilder();
+                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
+                             java.sql.PreparedStatement stmt = conn.prepareStatement(sql)) {
+                            stmt.setLong(1, message.getUserId());
+                            try (java.sql.ResultSet rs = stmt.executeQuery()) {
+                                while (rs.next()) {
+                                    int chatId = rs.getInt("chat_id");
+                                    String chatName = rs.getString("chat_name");
+                                    String chatType = rs.getString("type");
+                                    String userRole = rs.getString("role");
+                                    if (userRole == null || "OWNER".equalsIgnoreCase(userRole)) {
+                                        userRole = "ADMIN";
+                                    }
+                                    if ("PRIVATE".equalsIgnoreCase(chatType)) {
+                                        String privateNameSql = """
+                                            SELECT users.username, users.status FROM chat_members
+                                            JOIN users ON chat_members.user_id = users.user_id
+                                            WHERE chat_members.chat_id = ? AND chat_members.user_id != ?
+                                        """;
+                                        try (java.sql.PreparedStatement pStmt = conn.prepareStatement(privateNameSql)) {
+                                            pStmt.setInt(1, chatId);
+                                            pStmt.setLong(2, message.getUserId());
+                                            try (java.sql.ResultSet pRs = pStmt.executeQuery()) {
+                                                if (pRs.next()) {
+                                                    chatName = pRs.getString("username");
+                                                    String status = pRs.getString("status");
+                                                    if (status == null || status.trim().isEmpty()) {
+                                                        status = "OFFLINE";
+                                                    }
+                                                    chatName = chatName + " | " + status.toUpperCase();
+                                                }
+                                            }
                                         }
                                     }
+                                    sb.append(chatName).append(":::")
+                                            .append(chatType).append(":::")
+                                            .append(userRole).append(" (ID: ").append(chatId).append(");");
                                 }
                             }
-                            sb.append(chatName).append(" (ID: ").append(chat.getId()).append(");");
                         }
                         return new Message(CommandType.STATUS_OK, message.getUserId(), sb.toString());
                     } catch (Exception e) {
@@ -125,15 +152,41 @@ public class Processor {
 
                         if (targetUserOpt.isPresent()) {
                             User targetUser = targetUserOpt.get();
-                            if (targetUser.getUser_id() == message.getUserId()) {
+                            long myId = message.getUserId();
+                            long peerId = targetUser.getUser_id();
+
+                            if (peerId == myId) {
                                 return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:CANNOT_ADD_YOURSELF");
                             }
-                            Chat privateChat = chatService.createChat("PrivateChat", org.example.models.ChatType.PRIVATE, message.getUserId());
-                            chatService.addUserToChat(privateChat.getId(), targetUser.getUser_id());
-                            ClientHandler peerHandler = ClientRegistry.getHandler((int) targetUser.getUser_id());
+
+                            String checkPrivateChatSql = """
+                                SELECT c.chat_id FROM chats c
+                                JOIN chat_members cm1 ON c.chat_id = cm1.chat_id
+                                JOIN chat_members cm2 ON c.chat_id = cm2.chat_id
+                                WHERE c.type = 'PRIVATE' 
+                                  AND cm1.user_id = ? 
+                                  AND cm2.user_id = ?
+                            """;
+
+                            try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
+                                 java.sql.PreparedStatement stmt = conn.prepareStatement(checkPrivateChatSql)) {
+                                stmt.setLong(1, myId);
+                                stmt.setLong(2, peerId);
+
+                                try (java.sql.ResultSet rs = stmt.executeQuery()) {
+                                    if (rs.next()) {
+                                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:PRIVATE_CHAT_ALREADY_EXISTS");
+                                    }
+                                }
+                            }
+
+                            Chat privateChat = chatService.createChat("PrivateChat", org.example.models.ChatType.PRIVATE, myId);
+                            chatService.addUserToChat(privateChat.getId(), peerId);
+
+                            ClientHandler peerHandler = ClientRegistry.getHandler((int) peerId);
                             if (peerHandler != null) {
                                 peerHandler.sendPacket(new MessagePacket((byte) 0, System.currentTimeMillis(),
-                                        new Message(CommandType.STATUS_OK, (int) targetUser.getUser_id(), "SUCCESS:REFRESH_CHATS")));
+                                        new Message(CommandType.STATUS_OK, (int) peerId, "SUCCESS:REFRESH_CHATS")));
                             }
                             return new Message(CommandType.STATUS_OK, message.getUserId(), "SUCCESS:REFRESH_CHATS");
                         } else {
@@ -207,6 +260,29 @@ public class Processor {
                         return new Message(CommandType.GET_CHAT_HISTORY, chatId, sb.toString());
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FAILED_TO_LOAD_HISTORY");
+                    }
+                }
+                case GET_PROFILE -> {
+                    String profileData = authService.getUserProfileRaw(message.getUserId());
+                    if (profileData.startsWith("ERROR")) {
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), profileData);
+                    }
+                    return new Message(CommandType.STATUS_OK, message.getUserId(), profileData);
+                }
+
+                case UPDATE_PROFILE -> {
+                    try {
+                        String[] tokens = message.getText().split(";");
+                        String newUsername = tokens[0].trim();
+                        String newPhone = tokens[1].trim();
+
+                        String result = authService.updateProfile(message.getUserId(), newUsername, newPhone);
+                        if (result.startsWith("ERROR")) {
+                            return new Message(CommandType.STATUS_ERROR, message.getUserId(), result);
+                        }
+                        return new Message(CommandType.STATUS_OK, message.getUserId(), result);
+                    } catch (Exception e) {
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:BAD_REQUEST");
                     }
                 }
 
@@ -315,11 +391,47 @@ public class Processor {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FAILED_TO_LOAD_MEMBERS");
                     }
                 }
+                case ADD_GROUP_MEMBER -> {
+                    try {
+                        String[] parts = message.getText().split(";", 2);
+                        int chatId = Integer.parseInt(parts[0]);
+                        String targetIdentifier = parts[1].trim();
+                        Optional<User> targetUserOpt = userDAO.findByUsername(targetIdentifier);
+                        if (targetUserOpt.isEmpty()) {
+                            targetUserOpt = userDAO.findByPhone(targetIdentifier);
+                        }
+
+                        if (targetUserOpt.isPresent()) {
+                            User targetUser = targetUserOpt.get();
+                            String checkSql = "SELECT 1 FROM chat_members WHERE chat_id = ? AND user_id = ?";
+                            try (java.sql.Connection conn = DBManager.getConnection();
+                                 PreparedStatement stmt = conn.prepareStatement(checkSql)) {
+                                stmt.setInt(1, chatId);
+                                stmt.setLong(2, targetUser.getUser_id());
+                                if (stmt.executeQuery().next()) {
+                                    return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:ALREADY_IN_CHAT");
+                                }
+                            }
+                            chatService.addUserToChat(chatId, targetUser.getUser_id());
+                            ClientHandler peerHandler = ClientRegistry.getHandler((int) targetUser.getUser_id());
+                            if (peerHandler != null) {
+                                peerHandler.sendPacket(new MessagePacket((byte) 0, System.currentTimeMillis(),
+                                        new Message(CommandType.STATUS_OK, (int) targetUser.getUser_id(), "SUCCESS:REFRESH_CHATS")));
+                            }
+                            return new Message(CommandType.STATUS_OK, chatId, "SUCCESS:USER_ADDED_TO_GROUP");
+                        } else {
+                            return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:USER_NOT_FOUND");
+                        }
+                    } catch (Exception e) {
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:ADD_MEMBER_FAILED");
+                    }
+                }
                 case PROMOTE_TO_ADMIN -> {
                     try {
                         String[] tokens = message.getText().split(";");
                         int chatId = Integer.parseInt(tokens[0]);
-                        int targetUserId = Integer.parseInt(tokens[1]);
+                        String targetUsername = tokens[1].trim();
+
                         String checkSql = "SELECT role FROM chat_members WHERE chat_id = ? AND user_id = ?";
                         try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
                              java.sql.PreparedStatement stmt = conn.prepareStatement(checkSql)) {
@@ -331,6 +443,23 @@ public class Processor {
                                 }
                             }
                         }
+
+                        int targetUserId = -1;
+                        String findUserSql = "SELECT user_id FROM users WHERE username = ?";
+                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
+                             java.sql.PreparedStatement stmt = conn.prepareStatement(findUserSql)) {
+                            stmt.setString(1, targetUsername);
+                            try (java.sql.ResultSet rs = stmt.executeQuery()) {
+                                if (rs.next()) {
+                                    targetUserId = rs.getInt("user_id");
+                                }
+                            }
+                        }
+
+                        if (targetUserId == -1) {
+                            return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:USER_NOT_FOUND");
+                        }
+
                         String updateSql = "UPDATE chat_members SET role = 'ADMIN' WHERE chat_id = ? AND user_id = ?";
                         try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
                              java.sql.PreparedStatement stmt = conn.prepareStatement(updateSql)) {
@@ -338,9 +467,48 @@ public class Processor {
                             stmt.setInt(2, targetUserId);
                             stmt.executeUpdate();
                         }
+
                         return new Message(CommandType.STATUS_OK, chatId, "SUCCESS:USER_PROMOTED");
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:PROMOTION_FAILED");
+                    }
+                }
+                case LEAVE_CHAT -> {
+                    try {
+                        int chatId = Integer.parseInt(message.getText().trim());
+                        String checkAdminSql = """
+                            SELECT role, 
+                                   (SELECT COUNT(*) FROM chat_members WHERE chat_id = ? AND role = 'ADMIN') as admin_count
+                            FROM chat_members 
+                            WHERE chat_id = ? AND user_id = ?
+                        """;
+
+                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
+                             java.sql.PreparedStatement stmt = conn.prepareStatement(checkAdminSql)) {
+                            stmt.setInt(1, chatId);
+                            stmt.setInt(2, chatId);
+                            stmt.setLong(3, message.getUserId());
+
+                            try (java.sql.ResultSet rs = stmt.executeQuery()) {
+                                if (rs.next()) {
+                                    String role = rs.getString("role");
+                                    int adminCount = rs.getInt("admin_count");
+                                    if ("ADMIN".equalsIgnoreCase(role) && adminCount <= 1) {
+                                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:SOLE_ADMIN");
+                                    }
+                                }
+                            }
+                        }
+                        String sql = "DELETE FROM chat_members WHERE chat_id = ? AND user_id = ?";
+                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
+                             java.sql.PreparedStatement stmt = conn.prepareStatement(sql)) {
+                            stmt.setInt(1, chatId);
+                            stmt.setLong(2, message.getUserId());
+                            stmt.executeUpdate();
+                        }
+                        return new Message(CommandType.STATUS_OK, message.getUserId(), "SUCCESS:REFRESH_CHATS");
+                    } catch (Exception e) {
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:FAILED_TO_LEAVE_CHAT");
                     }
                 }
                 case RENAME_CHAT -> {
@@ -369,6 +537,59 @@ public class Processor {
                         return new Message(CommandType.STATUS_OK, chatId, "SUCCESS:RENAME;" + newName);
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:RENAME_FAILED");
+                    }
+                }
+                case REMOVE_GROUP_MEMBER -> {
+                    try {
+                        String[] tokens = message.getText().split(";");
+                        int chatId = Integer.parseInt(tokens[0]);
+                        String targetUsername = tokens[1].trim();
+
+                        String checkSql = "SELECT role FROM chat_members WHERE chat_id = ? AND user_id = ?";
+                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
+                             java.sql.PreparedStatement stmt = conn.prepareStatement(checkSql)) {
+                            stmt.setInt(1, chatId);
+                            stmt.setInt(2, message.getUserId());
+                            try (java.sql.ResultSet rs = stmt.executeQuery()) {
+                                if (!rs.next() || !"ADMIN".equalsIgnoreCase(rs.getString("role"))) {
+                                    return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:NOT_AN_ADMIN");
+                                }
+                            }
+                        }
+
+                        int targetUserId = -1;
+                        String findUserSql = "SELECT user_id FROM users WHERE username = ?";
+                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
+                             java.sql.PreparedStatement stmt = conn.prepareStatement(findUserSql)) {
+                            stmt.setString(1, targetUsername);
+                            try (java.sql.ResultSet rs = stmt.executeQuery()) {
+                                if (rs.next()) {
+                                    targetUserId = rs.getInt("user_id");
+                                }
+                            }
+                        }
+
+                        if (targetUserId == -1) {
+                            return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:USER_NOT_FOUND");
+                        }
+
+                        String deleteSql = "DELETE FROM chat_members WHERE chat_id = ? AND user_id = ?";
+                        try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
+                             java.sql.PreparedStatement stmt = conn.prepareStatement(deleteSql)) {
+                            stmt.setInt(1, chatId);
+                            stmt.setInt(2, targetUserId);
+                            stmt.executeUpdate();
+                        }
+
+                        ClientHandler peerHandler = ClientRegistry.getHandler(targetUserId);
+                        if (peerHandler != null) {
+                            peerHandler.sendPacket(new MessagePacket((byte) 0, System.currentTimeMillis(),
+                                    new Message(CommandType.STATUS_OK, targetUserId, "SUCCESS:REFRESH_CHATS")));
+                        }
+
+                        return new Message(CommandType.STATUS_OK, chatId, "SUCCESS:USER_REMOVED");
+                    } catch (Exception e) {
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:REMOVE_FAILED");
                     }
                 }
 

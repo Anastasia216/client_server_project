@@ -42,7 +42,7 @@ public class NetworkReceiverThread implements Runnable {
                                 if (controllerName.equals("LoginController") || controllerName.equals("RegisterController")) {
                                     Method method = controller.getClass().getMethod("handleAuthResponse", Message.class);
                                     method.invoke(controller, responseMessage);
-                                } else if (controllerName.equals("ChatPanels") || controllerName.equals("AddGroupController") || controllerName.equals("AddContactController")) {
+                                } else if (controllerName.equals("ChatPanels") || controllerName.equals("AddGroupController") || controllerName.equals("AddContactController") || controllerName.equals("UserInfoController")) { // 🌟 ДОДАНО UserInfoController СЮДI
                                     Method method = controller.getClass().getMethod("handleSystemStatus", Message.class);
                                     method.invoke(controller, responseMessage);
                                 }

@@ -64,4 +64,30 @@ public class AuthService {
             userDAO.update(user);
         });
     }
+    public String updateProfile(long userId, String newUsername, String newPhone) {
+        if (userDAO instanceof org.example.DAO.impl.SQLiteUserDAO sqliteDAO) {
+            if (!sqliteDAO.isUsernameUnique(newUsername, userId)) {
+                return "ERROR:USERNAME_ALREADY_EXISTS";
+            }
+            if (!sqliteDAO.isPhoneUnique(newPhone, userId)) {
+                return "ERROR:PHONE_ALREADY_EXISTS";
+            }
+        }
+
+        java.util.Optional<User> userOpt = userDAO.findById(userId);
+        if (userOpt.isPresent()) {
+            User user = userOpt.get();
+            user.setUsername(newUsername);
+            user.setPhone(newPhone);
+            userDAO.update(user);
+            return "SUCCESS:PROFILE_UPDATED;" + newUsername + ";" + newPhone;
+        }
+        return "ERROR:USER_NOT_FOUND";
+    }
+
+    public String getUserProfileRaw(long userId) {
+        return userDAO.findById(userId)
+                .map(u -> "PROFILE_INFO;" + u.getUsername() + ";" + u.getPhone())
+                .orElse("ERROR:USER_NOT_FOUND");
+    }
 }

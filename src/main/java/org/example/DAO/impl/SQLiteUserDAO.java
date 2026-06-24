@@ -150,4 +150,34 @@ public class SQLiteUserDAO implements UserDAO {
                 resultSet.getBoolean("is_blocked")
         );
     }
+
+    public boolean isUsernameUnique(String username, long currentUserId) {
+        String sql = "SELECT 1 FROM users WHERE username = ? AND user_id != ?";
+        try (Connection connection = DBManager.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, username);
+            statement.setLong(2, currentUserId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return !resultSet.next();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    public boolean isPhoneUnique(String phone, long currentUserId) {
+        String sql = "SELECT 1 FROM users WHERE phone = ? AND user_id != ?";
+        try (Connection connection = DBManager.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, phone);
+            statement.setLong(2, currentUserId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return !resultSet.next();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
 }

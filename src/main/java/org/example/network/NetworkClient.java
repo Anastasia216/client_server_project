@@ -143,6 +143,18 @@ public class NetworkClient {
         sendPacket(packet);
     }
 
+    public void sendLeaveChatRequest(int chatId) {
+        String rawData = String.valueOf(chatId);
+        Message leaveMessage = new Message(CommandType.LEAVE_CHAT, myUserId, rawData);
+        MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), leaveMessage);
+        sendPacket(packet);
+    }
+
+    public void sendPromoteToAdminRequest(int chatId, String username) {
+        Message msg = new Message(CommandType.PROMOTE_TO_ADMIN, myUserId, chatId + ";" + username);
+        sendPacket(new MessagePacket((byte) 1, System.currentTimeMillis(), msg));
+    }
+
     public void sendGetGroupMembersRequest(int chatId) {
         String rawData = String.valueOf(chatId);
         Message msg = new Message(CommandType.GET_GROUP_MEMBERS, myUserId, rawData);
@@ -162,6 +174,17 @@ public class NetworkClient {
         Message msg = new Message(CommandType.PROMOTE_TO_ADMIN, myUserId, rawData);
         MessagePacket packet = new MessagePacket((byte) 1, System.currentTimeMillis(), msg);
         sendPacket(packet);
+    }
+
+    public void sendGetProfileRequest() {
+        Message msg = new Message(CommandType.GET_PROFILE, myUserId, "");
+        sendPacket(new MessagePacket((byte) 1, System.currentTimeMillis(), msg));
+    }
+
+    public void sendUpdateProfileRequest(String username, String phone) {
+        String rawData = username + ";" + phone;
+        Message msg = new Message(CommandType.UPDATE_PROFILE, myUserId, rawData);
+        sendPacket(new MessagePacket((byte) 1, System.currentTimeMillis(), msg));
     }
     public InputStream getInputStream() { return in; }
     public Socket getSocket() { return socket; }
