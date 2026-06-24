@@ -38,6 +38,12 @@ public class ChatService {
         chatMemberDAO.addMember(newMember);
         return true;
     }
+    public void renameChat(int chatId, String newName) {
+        chatDAO.renameChat(chatId, newName);
+    }
+    public boolean isAdminOfChat(long userId, int chatId) {
+        return chatDAO.isAdmin(userId, chatId);
+    }
 
     public void removeMemberFromChat(long chatId, long userId) {
         chatMemberDAO.removeMember(chatId, userId);
@@ -67,5 +73,33 @@ public class ChatService {
     }
     public boolean addUserToChat(long chatId, long userId){
         return addMemberToChat(chatId, userId, org.example.models.ChatRole.USER);
+    }
+    public void promoteUserToAdmin(int chatId, int targetUserId) {
+        chatDAO.updateMemberRole(chatId, targetUserId, "ADMIN");
+    }
+
+    public void removeUserFromGroup(int chatId, int targetUserId) {
+        chatDAO.removeMember(chatId, targetUserId);
+    }
+    public String getGroupMembersData(int chatId) {
+        return chatDAO.getGroupMembersData(chatId);
+    }
+    public void leaveChat(int chatId, long userId) {
+        chatDAO.removeMember(chatId, userId);
+    }
+    public boolean isSoleAdmin(int chatId, long userId) {
+        return chatDAO.isSoleAdmin(chatId, userId);
+    }
+    public boolean isMember(int chatId, long userId) {
+        return chatDAO.isMember(chatId, userId);
+    }
+    public boolean privateChatExists(long user1Id, long user2Id) {
+        return chatDAO.privateChatExists(user1Id, user2Id);
+    }
+    public String getUserChats(long userId) {
+        return chatDAO.getUserChatsData(userId);
+    }
+    public String getChatHistory(int chatId) {
+        return chatDAO.getChatHistory(chatId);
     }
 }

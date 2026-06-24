@@ -61,7 +61,7 @@ public class MultiClientTester {
             if (headerBase.length == MessagePacket.HEADER_SIZE) {
                 int wLen = ByteBuffer.wrap(headerBase, 10, 4).getInt();
                 int restSize = wLen + 2;
-                byte[] restBytes = in.readNBytes(restSize); // Читаємо залишок пакету
+                byte[] restBytes = in.readNBytes(restSize);
 
                 MessagePacket responsePacket = MessagePacket.fromBytes(headerBase, restBytes);
                 System.out.println("[VIRTUAL CLIENT] (" + username + ") Response from server: " + responsePacket.getMessage().getText());

@@ -50,4 +50,15 @@ public class SQLiteLogDAO implements LogDAO {
         }
         return log;
     }
+    @Override
+    public void saveLog(String level, String message) {
+        String sql = "INSERT INTO logs (level, message, created_at) VALUES (?, ?, ?)";
+        try (Connection conn = DBManager.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, level);
+            stmt.setString(2, message);
+            stmt.setLong(3, System.currentTimeMillis());
+            stmt.executeUpdate();
+        } catch (Exception e) { e.printStackTrace(); }
+    }
 }

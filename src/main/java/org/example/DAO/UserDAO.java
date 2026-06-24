@@ -12,5 +12,6 @@ public interface UserDAO {
     List<User> findAll();
     void update(User user);
     void delete(long id);
-
+    void updateUserRole(int userId, String newRole);
+    void updateBlockStatus(int userId, boolean isBlocked);
 }

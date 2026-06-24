@@ -132,6 +132,7 @@ public class AdminPage {
     }
 
     public void handleAdminResponse(Message message) {
+        System.out.println("[DEBUG] AdminPage received: " + message.getCommandType() + " | Text: " + message.getText());
         Platform.runLater(() -> {
             switch (message.getCommandType()) {
                 case GET_ADMIN_STATS -> {
@@ -153,6 +154,9 @@ public class AdminPage {
                         }
                     }
                 }
+                case NEW_LOG -> {
+                    appendLog(message.getText());
+                }
             }
         });
     }
@@ -173,4 +177,11 @@ public class AdminPage {
         public SimpleStringProperty roleProperty() { return role; }
         public SimpleStringProperty blockProperty() { return blockStatus; }
     }
+    public void appendLog(String message) {
+        Platform.runLater(() -> {
+            String timestamp = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"));
+            serverLogsArea.appendText("[" + timestamp + "] " + message + "\n");
+        });
+    }
+
 }

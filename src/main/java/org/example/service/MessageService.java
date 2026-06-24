@@ -57,4 +57,13 @@ public class MessageService {
     public void deleteMessage(long messageId) {
         messageDAO.delete(messageId);
     }
+    public long getTotalMessagesCount() {
+        return messageDAO.countAll();
+    }
+    public long getLastMessageId() {
+        return messageDAO.getLastMessageId();
+    }
+    public void markChatAsRead(int chatId, long userId) {
+        messageDAO.markMessagesAsRead(chatId, userId);
+    }
 }
