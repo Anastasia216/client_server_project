@@ -310,6 +310,14 @@ public class Processor {
                     }
                 }
 
+                case DELETE_ACCOUNT -> {
+                    String deleteResult = userDAO.deleteUserAccountFully(message.getUserId());
+                    if (deleteResult.startsWith("ERROR")) {
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), deleteResult);
+                    }
+                    return new Message(CommandType.STATUS_OK, message.getUserId(), deleteResult);
+                }
+
                 case SEND_FILE -> {
                     try {
                         String[] tokens = message.getText().split(";", 4);

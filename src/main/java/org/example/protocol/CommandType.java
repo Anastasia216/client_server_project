@@ -30,6 +30,7 @@ public enum CommandType {
 
     GET_PROFILE(3101),
     UPDATE_PROFILE(3102),
+    DELETE_ACCOUNT(3103),
 
     STATUS_OK(200),
     STATUS_ERROR(400);

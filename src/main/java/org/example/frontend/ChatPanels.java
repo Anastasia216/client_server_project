@@ -61,6 +61,13 @@ public class ChatPanels {
         attachmentButton.setOnAction(event -> handleAttachment());
         sendButton.setOnAction(event -> sendMessage());
 
+        messageInputField.setOnKeyPressed(event -> {
+            if (event.getCode() == javafx.scene.input.KeyCode.ENTER) {
+                sendMessage();
+                event.consume();
+            }
+        });
+
         ChatListView.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> {
             if (newValue != null) {
                 parseAndOpenChat(newValue);
@@ -488,7 +495,18 @@ public class ChatPanels {
         Platform.runLater(() -> {
             if (msg.getCommandType() == CommandType.STATUS_OK) {
                 String text = msg.getText();
+                if ("SUCCESS:ACCOUNT_DELETED".equals(text)) {
+                    Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                    alert.setTitle("Account Deleted");
+                    alert.setHeaderText(null);
+                    alert.setContentText("Your account has been successfully deleted from the system. Returning to Login screen.");
+                    alert.showAndWait();
 
+                    NetworkClient.getInstance().disconnect();
+                    System.clearProperty("user.role");
+                    SceneSwitcher.navigate(menuLeftHeaderButton, "Login.fxml");
+                    return;
+                }
                 if (text != null && text.startsWith("STATUS_UPDATE;")) {
                     String[] tokens = text.split(";");
                     int updatedUserId = Integer.parseInt(tokens[1]);
@@ -569,6 +587,18 @@ public class ChatPanels {
                 alert.setTitle("Operation Error");
                 alert.setHeaderText("Failed to complete action");
 
+                if (errorText.startsWith("ERROR:SOLE_ADMIN_IN_GROUP")) {
+                    String groupName = errorText.contains(";") ? errorText.split(";")[1] : "Group";
+                    alert.setAlertType(Alert.AlertType.WARNING);
+                    alert.setTitle("Action Denied");
+                    alert.setHeaderText("Cannot Delete Account");
+                    alert.setContentText("You are the role administrator of the group chat \"" + groupName + "\". Please appoint another administrator or delete the group before removing your account.");
+                } else if ("ERROR:SYSTEM_ADMIN_CANNOT_BE_DELETED".equals(errorText)) {
+                    alert.setAlertType(Alert.AlertType.WARNING);
+                    alert.setTitle("Action Denied");
+                    alert.setHeaderText("Security Restriction");
+                    alert.setContentText("System Administrators cannot delete their profiles from the client panel.");
+                }
                 if ("ERROR:PRIVATE_CHAT_ALREADY_EXISTS".equals(errorText)) {
                     alert.setContentText("A private chat with this user already exists in your chat list.");
                 } else if ("ERROR:USER_NOT_FOUND".equals(errorText)) {
@@ -585,7 +615,9 @@ public class ChatPanels {
                     alert.setTitle("Action Denied");
                     alert.setHeaderText("Cannot Leave Group");
                     alert.setContentText("You are the only administrator in this group. You cannot leave until you appoint another administrator or delete the group completely.");
-                } else {
+                }
+
+                else {
                     alert.setContentText("Server returned an error: " + errorText);
                 }
                 alert.showAndWait();
@@ -867,6 +899,29 @@ public class ChatPanels {
         });
 
         popupMenu.getChildren().addAll(btnInfo, btnAdmin, btnLogout);
+
+        String userRole = System.getProperty("user.role", "USER");
+        if (!"ADMIN".equalsIgnoreCase(userRole)) {
+            Button btnDeleteAcc = new Button("Delete Account");
+            btnDeleteAcc.setStyle("-fx-background-color: transparent; -fx-text-fill: #b91c1c; -fx-font-size: 14px; -fx-font-weight: bold; -fx-cursor: hand; -fx-pref-width: 120; -fx-alignment: CENTER_LEFT;");
+            btnDeleteAcc.setOnAction(e -> {
+                leftMenuPopup.hide();
+
+                Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+                alert.setTitle("Delete Account");
+                alert.setHeaderText("Are you absolutely sure?");
+                alert.setContentText("This will permanently delete your profile, private chats and messages. This action CANNOT be undone!");
+
+                alert.showAndWait().ifPresent(response -> {
+                    if (response == ButtonType.OK) {
+                        Message deleteMsg = new Message(CommandType.DELETE_ACCOUNT, NetworkClient.getInstance().getMyUserId(), "");
+                        NetworkClient.getInstance().sendPacket(new org.example.protocol.MessagePacket((byte) 1, System.currentTimeMillis(), deleteMsg));
+                    }
+                });
+            });
+            popupMenu.getChildren().add(btnDeleteAcc);
+        }
+
         leftMenuPopup.getContent().add(popupMenu);
 
         menuLeftHeaderButton.setOnAction(event -> {

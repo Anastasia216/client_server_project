@@ -180,4 +180,103 @@ public class SQLiteUserDAO implements UserDAO {
         }
         return false;
     }
+
+    public String deleteUserAccountFully(long userId) {
+        String checkSysRoleSql = "SELECT role FROM users WHERE user_id = ?";
+        try (Connection conn = DBManager.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(checkSysRoleSql)) {
+            stmt.setLong(1, userId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next() && "ADMIN".equalsIgnoreCase(rs.getString("role"))) {
+                    return "ERROR:SYSTEM_ADMIN_CANNOT_BE_DELETED";
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return "ERROR:DATABASE_ERROR";
+        }
+
+        String checkGroupAdminsSql = """
+            SELECT cm.chat_id, c.chat_name 
+            FROM chat_members cm
+            JOIN chats c ON cm.chat_id = c.chat_id
+            WHERE cm.user_id = ? AND cm.role = 'ADMIN' AND c.type = 'GROUP'
+              AND (SELECT COUNT(*) FROM chat_members WHERE chat_id = cm.chat_id AND role = 'ADMIN') <= 1
+        """;
+        try (Connection conn = DBManager.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(checkGroupAdminsSql)) {
+            stmt.setLong(1, userId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    String groupName = rs.getString("chat_name");
+                    return "ERROR:SOLE_ADMIN_IN_GROUP;" + groupName;
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return "ERROR:DATABASE_ERROR";
+        }
+
+        try (Connection conn = DBManager.getConnection()) {
+            conn.setAutoCommit(false);
+
+            try {
+                String deleteMessagesSql = "DELETE FROM messages WHERE sender_id = ?";
+                try (PreparedStatement stmt = conn.prepareStatement(deleteMessagesSql)) {
+                    stmt.setLong(1, userId);
+                    stmt.executeUpdate();
+                }
+
+                String findPrivateChatsSql = """
+                    SELECT chat_id FROM chats WHERE type = 'PRIVATE' AND chat_id IN 
+                    (SELECT chat_id FROM chat_members WHERE user_id = ?)
+                """;
+                List<Long> privateChatIds = new ArrayList<>();
+                try (PreparedStatement stmt = conn.prepareStatement(findPrivateChatsSql)) {
+                    stmt.setLong(1, userId);
+                    try (ResultSet rs = stmt.executeQuery()) {
+                        while (rs.next()) privateChatIds.add(rs.getLong("chat_id"));
+                    }
+                }
+
+                for (long chatId : privateChatIds) {
+                    try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM chat_members WHERE chat_id = ?")) {
+                        stmt.setLong(1, chatId);
+                        stmt.executeUpdate();
+                    }
+                    try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM messages WHERE chat_id = ?")) {
+                        stmt.setLong(1, chatId);
+                        stmt.executeUpdate();
+                    }
+                    try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM chats WHERE chat_id = ?")) {
+                        stmt.setLong(1, chatId);
+                        stmt.executeUpdate();
+                    }
+                }
+
+                String deleteMembershipsSql = "DELETE FROM chat_members WHERE user_id = ?";
+                try (PreparedStatement stmt = conn.prepareStatement(deleteMembershipsSql)) {
+                    stmt.setLong(1, userId);
+                    stmt.executeUpdate();
+                }
+
+                String deleteUserSql = "DELETE FROM users WHERE user_id = ?";
+                try (PreparedStatement stmt = conn.prepareStatement(deleteUserSql)) {
+                    stmt.setLong(1, userId);
+                    stmt.executeUpdate();
+                }
+
+                conn.commit();
+                return "SUCCESS:ACCOUNT_DELETED";
+
+            } catch (SQLException e) {
+                conn.rollback();
+                e.printStackTrace();
+                return "ERROR:TRANSACTION_FAILED";
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return "ERROR:DATABASE_ERROR";
+        }
+    }
 }
