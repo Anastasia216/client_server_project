@@ -12,7 +12,6 @@ public class SQLiteLogDAO implements LogDAO {
 
     @Override
     public void save(Log log) {
-        // created_at fills automatically by DEFAULT CURRENT_TIMESTAMP
         String sql = "INSERT INTO logs (level, message) VALUES (?, ?)";
         try (Connection connection = DBManager.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {

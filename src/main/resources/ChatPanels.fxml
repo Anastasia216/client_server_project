@@ -12,7 +12,6 @@
 <?import javafx.scene.layout.Region?>
 <?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
-<?import javafx.scene.shape.Circle?>
 <?import javafx.scene.text.Font?>
 
 <VBox prefHeight="750.0" prefWidth="1100.0" stylesheets="@style.css" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.frontend.ChatPanels">
@@ -28,15 +27,12 @@
                                     <children>
                                         <HBox alignment="CENTER_LEFT">
                                             <children>
-                                                <Label text="Messenger" textFill="#212529">
-                                                    <font>
-                                                        <Font name="System Bold" size="22.0" />
-                                                    </font>
-                                                </Label>
-                                            </children>
+                                                <Label text="Chats " style="-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #1c1c1e;" />
+                                                <Region HBox.hgrow="ALWAYS" />
+                                                <Button fx:id="menuLeftHeaderButton" text="Menu" style="-fx-background-color: transparent; -fx-text-fill: #0078FF; -fx-font-weight: bold; -fx-font-size: 14px; -fx-cursor: hand; -fx-padding: 0;" /> </children>
                                         </HBox>
 
-                                        <TextField fx:id="searchField" prefHeight="38.0" promptText="Пошук..." style="-fx-background-radius: 10; -fx-border-radius: 10; -fx-border-color: #ced4da; -fx-background-color: #ffffff; -fx-padding: 0 0 0 15;">
+                                        <TextField fx:id="searchField" prefHeight="38.0" promptText="Search..." style="-fx-background-radius: 10; -fx-border-radius: 10; -fx-border-color: #ced4da; -fx-background-color: #ffffff; -fx-padding: 0 0 0 15;">
                                             <font>
                                                 <Font size="14.0" />
                                             </font>
@@ -64,17 +60,16 @@
 
                 <BorderPane style="-fx-background-color: #ffffff;">
                     <top>
-                        <HBox fx:id="chatHeaderBox" alignment="CENTER_LEFT" spacing="15.0" style="-fx-border-color: #e9ecef; -fx-border-width: 0 0 1 0; -fx-background-color: #ffffff;" BorderPane.alignment="CENTER">
+                        <HBox fx:id="chatHeaderBox" alignment="CENTER_LEFT" spacing="15.0" style="-fx-border-color: #e9ecef; -fx-border-width: 0 0 1 0; -fx-background-color: #ffffff;" BorderPane.alignment="CENTER" visible="false" managed="false">
                             <children>
-                                <Circle fill="#e2e8f0" radius="24.0" stroke="TRANSPARENT" />
-                                <VBox alignment="CENTER_LEFT" spacing="3.0">
+                                <VBox alignment="CENTER_LEFT" spacing="2.0">
                                     <children>
-                                        <Label fx:id="chatContactNameLabel" text="Select Chat" textFill="#212529">
+                                        <Label fx:id="chatContactNameLabel" text="" textFill="#212529">
                                             <font>
                                                 <Font name="System Bold" size="16.0" />
                                             </font>
                                         </Label>
-                                        <Label text="recently visited" textFill="#6c757d">
+                                        <Label fx:id="chatStatusLabel" text="" textFill="#6c757d">
                                             <font>
                                                 <Font size="12.0" />
                                             </font>
@@ -82,12 +77,8 @@
                                     </children>
                                 </VBox>
                                 <Region HBox.hgrow="ALWAYS" />
-                                <Button fx:id="searchHeaderButton" mnemonicParsing="false" style="-fx-background-color: transparent; -fx-cursor: hand;" text="🔍" textFill="#6c757d">
-                                    <font><Font size="16.0" /></font>
-                                </Button>
-                                <Button fx:id="menuHeaderButton" mnemonicParsing="false" style="-fx-background-color: transparent; -fx-cursor: hand;" text="⋮" textFill="#6c757d">
-                                    <font><Font size="16.0" /></font>
-                                </Button>
+                                <Button fx:id="searchHeaderButton" text="Search" mnemonicParsing="false" style="-fx-background-color: transparent; -fx-text-fill: #6c757d; -fx-cursor: hand; -fx-font-weight: bold;" visible="false" managed="false" />
+                                <Button fx:id="menuHeaderButton" text="..." mnemonicParsing="false" style="-fx-background-color: transparent; -fx-text-fill: #6c757d; -fx-cursor: hand; -fx-font-size: 16px; -fx-font-weight: bold;" />
                             </children>
                             <padding>
                                 <Insets bottom="12.0" left="25.0" right="25.0" top="12.0" />
@@ -96,28 +87,36 @@
                     </top>
 
                     <center>
-                        <ScrollPane fitToWidth="true" style="-fx-background-color: transparent; -fx-background: #ffffff;" BorderPane.alignment="CENTER">
-                            <content>
-                                <VBox fx:id="messagesVBox" spacing="12.0">
-                                    <padding>
-                                        <Insets bottom="25.0" left="25.0" right="25.0" top="25.0" />
-                                    </padding>
-                                </VBox>
-                            </content>
-                        </ScrollPane>
+                        <StackPane BorderPane.alignment="CENTER">
+                            <children>
+                                <ScrollPane fx:id="chatScrollPane" fitToWidth="true" style="-fx-background-color: transparent; -fx-background: #ffffff;">                                    <content>
+                                        <VBox fx:id="messagesVBox" spacing="12.0">
+                                            <padding>
+                                                <Insets bottom="25.0" left="25.0" right="25.0" top="25.0" />
+                                            </padding>
+                                        </VBox>
+                                    </content>
+                                </ScrollPane>
+
+                                <Label fx:id="selectChatPlaceholderLabel" text="Select a chat to start messaging"
+                                       style="-fx-font-size: 16px; -fx-text-fill: #8e8e93; -fx-font-style: italic;"
+                                       StackPane.alignment="CENTER" visible="true" managed="true" />
+                            </children>
+                        </StackPane>
                     </center>
 
                     <bottom>
                         <HBox alignment="CENTER" spacing="12.0" style="-fx-border-color: #e9ecef; -fx-border-width: 1 0 0 0; -fx-background-color: #ffffff;" BorderPane.alignment="CENTER">
                             <children>
-                                <Button fx:id="attachmentButton" mnemonicParsing="false" onAction="#handleAttachment" style="-fx-background-color: transparent; -fx-cursor: hand;" text="📎" textFill="#6c757d">                                    <font><Font size="18.0" /></font>
-                                </Button>
-                                <TextField fx:id="messageInputField" prefHeight="40.0" promptText="Напишіть повідомлення..." style="-fx-background-radius: 20; -fx-border-radius: 20; -fx-border-color: #ced4da; -fx-background-color: #f8f9fa;" HBox.hgrow="ALWAYS">
+                                <Button fx:id="attachmentButton" text="Attach" mnemonicParsing="false" onAction="#handleAttachment" style="-fx-background-color: transparent; -fx-text-fill: #6c757d; -fx-cursor: hand; -fx-font-weight: bold; -fx-font-size: 14px;" />
+
+                                <TextField fx:id="messageInputField" prefHeight="40.0" promptText="Type a message..." style="-fx-background-radius: 20; -fx-border-radius: 20; -fx-border-color: #ced4da; -fx-background-color: #f8f9fa;" HBox.hgrow="ALWAYS">
                                     <font>
                                         <Font size="14.0" />
                                     </font>
                                 </TextField>
-                                <Button fx:id="sendButton" mnemonicParsing="false" style="-fx-background-color: #007bff; -fx-text-fill: white; -fx-background-radius: 20; -fx-cursor: hand; -fx-pref-width: 40; -fx-pref-height: 40;" text="➤" />
+
+                                <Button fx:id="sendButton" text="Send" mnemonicParsing="false" style="-fx-background-color: #007bff; -fx-text-fill: white; -fx-background-radius: 20; -fx-cursor: hand; -fx-font-weight: bold; -fx-pref-height: 40; -fx-padding: 0 15 0 15;" />
                             </children>
                             <padding>
                                 <Insets bottom="20.0" left="25.0" right="25.0" top="20.0" />

@@ -7,7 +7,6 @@ import javafx.scene.control.*;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
-import javafx.scene.shape.Circle;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.stage.Stage;
@@ -20,9 +19,12 @@ import java.util.List;
 public class AddGroupController {
 
     @FXML private TextField groupNameField;
+    @FXML private TextField searchUserField; // Наше поле пошуку
     @FXML private ListView<ContactPreview> contactListView;
     @FXML private Button cancelButton;
     @FXML private Button createButton;
+
+    private final List<ContactPreview> allContacts = new ArrayList<>();
 
     public static class ContactPreview {
         int id;
@@ -41,9 +43,18 @@ public class AddGroupController {
     @FXML
     public void initialize() {
         NetworkClient.getInstance().setActiveController(this);
+
+        NetworkClient.getInstance().sendGetContactsRequest();
+        if (searchUserField != null) {
+            searchUserField.textProperty().addListener((observable, oldValue, newValue) -> {
+                filterContacts(newValue.trim().toLowerCase());
+            });
+        }
+
         contactListView.setCellFactory(listView -> new ListCell<>() {
             @Override
             protected void updateItem(ContactPreview contact, boolean empty) {
+                super.updateItem(contact, empty);
                 if (empty || contact == null) {
                     setGraphic(null);
                     setText(null);
@@ -52,8 +63,6 @@ public class AddGroupController {
                     CheckBox checkBox = new CheckBox();
                     checkBox.setSelected(contact.isSelected);
                     checkBox.setOnAction(e -> contact.isSelected = checkBox.isSelected());
-
-                    Circle avatar = new Circle(18, Color.web("#e2e8f0"));
 
                     Label nameLabel = new Label(contact.username);
                     nameLabel.setFont(Font.font("System", FontWeight.BOLD, 14));
@@ -66,7 +75,7 @@ public class AddGroupController {
                     VBox textContainer = new VBox(2, nameLabel, statusLabel);
                     textContainer.setAlignment(Pos.CENTER_LEFT);
 
-                    HBox root = new HBox(12, checkBox, avatar, textContainer);
+                    HBox root = new HBox(12, checkBox, textContainer);
                     root.setAlignment(Pos.CENTER_LEFT);
                     root.setStyle("-fx-padding: 8px 5px;");
 
@@ -81,10 +90,23 @@ public class AddGroupController {
             }
         });
 
-        NetworkClient.getInstance().sendGetContactsRequest();
-
         cancelButton.setOnAction(event -> closeWindow());
         createButton.setOnAction(event -> handleCreateGroup());
+    }
+
+    private void filterContacts(String query) {
+        if (query.isEmpty()) {
+            contactListView.getItems().setAll(allContacts);
+            return;
+        }
+
+        List<ContactPreview> filtered = new ArrayList<>();
+        for (ContactPreview contact : allContacts) {
+            if (contact.username.toLowerCase().contains(query)) {
+                filtered.add(contact);
+            }
+        }
+        contactListView.getItems().setAll(filtered);
     }
 
     public void handleSystemStatus(Message response) {
@@ -95,7 +117,10 @@ public class AddGroupController {
                 closeWindow();
                 return;
             }
+
+            allContacts.clear();
             contactListView.getItems().clear();
+
             if (rawData != null && !rawData.isEmpty()) {
                 String[] contacts = rawData.split("\\|\\|\\|");
                 for (String c : contacts) {
@@ -104,9 +129,16 @@ public class AddGroupController {
                         int id = Integer.parseInt(parts[0]);
                         String name = parts[1];
                         boolean isOnline = "ONLINE".equalsIgnoreCase(parts[2]);
-                        contactListView.getItems().add(new ContactPreview(id, name, isOnline));
+
+                        ContactPreview contact = new ContactPreview(id, name, isOnline);
+                        allContacts.add(contact);
                     }
                 }
+            }
+            contactListView.getItems().setAll(allContacts);
+
+            if (searchUserField != null && !searchUserField.getText().trim().isEmpty()) {
+                filterContacts(searchUserField.getText().trim().toLowerCase());
             }
         });
     }
@@ -117,7 +149,7 @@ public class AddGroupController {
         if (groupName.isEmpty()) return;
 
         List<Integer> selectedUserIds = new ArrayList<>();
-        for (ContactPreview contact : contactListView.getItems()) {
+        for (ContactPreview contact : allContacts) {
             if (contact.isSelected) {
                 selectedUserIds.add(contact.id);
             }

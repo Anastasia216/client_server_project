@@ -6,70 +6,80 @@
 <?import javafx.scene.control.ListView?>
 <?import javafx.scene.control.TextField?>
 <?import javafx.scene.layout.HBox?>
-<?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.text.Font?>
 
-<StackPane prefHeight="600.0" prefWidth="800.0" style="-fx-background-color: rgba(0, 0, 0, 0.4);" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.frontend.AddGroupController">
+<VBox maxHeight="550.0" maxWidth="380.0" spacing="15.0" style="-fx-background-color: #ffffff; -fx-background-radius: 12;" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.example.frontend.AddGroupController">
+   <padding>
+      <Insets bottom="25.0" left="25.0" right="25.0" top="25.0" />
+   </padding>
    <children>
-      <VBox maxHeight="500.0" maxWidth="380.0" spacing="15.0" style="-fx-background-color: #ffffff; -fx-background-radius: 12; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.2), 20, 0, 0, 5);">
-         <padding>
-            <Insets bottom="25.0" left="25.0" right="25.0" top="25.0" />
-         </padding>
+      <Label text="New Group" textFill="#212529">
+         <font>
+            <Font name="System Bold" size="22.0" />
+         </font>
+         <VBox.margin>
+            <Insets bottom="5.0" />
+         </VBox.margin>
+      </Label>
+
+      <VBox spacing="5.0">
          <children>
-            <Label text="New Group" textFill="#212529">
+            <Label text="Search users (by username or phone)" textFill="#6c757d">
                <font>
-                  <Font name="System Bold" size="22.0" />
+                  <Font size="13.0" />
                </font>
-               <VBox.margin>
-                  <Insets bottom="5.0" />
-               </VBox.margin>
             </Label>
-
-            <VBox spacing="5.0">
-               <children>
-                  <Label text="Group Name" textFill="#6c757d">
-                     <font>
-                        <Font size="13.0" />
-                     </font>
-                  </Label>
-                  <TextField fx:id="groupNameField" prefHeight="40.0" promptText="Enter group name..." style="-fx-background-radius: 8; -fx-border-radius: 8; -fx-border-color: #ced4da; -fx-background-color: #f8f9fa;">
-                     <font>
-                        <Font size="14.0" />
-                     </font>
-                  </TextField>
-               </children>
-            </VBox>
-
-            <VBox spacing="5.0" VBox.vgrow="ALWAYS">
-               <children>
-                  <Label text="Select members:" textFill="#6c757d">
-                     <font>
-                        <Font size="13.0" />
-                     </font>
-                  </Label>
-                  <ListView fx:id="contactListView" style="-fx-background-radius: 8; -fx-border-radius: 8; -fx-border-color: #ced4da; -fx-control-inner-background: #ffffff;" VBox.vgrow="ALWAYS" />
-               </children>
-            </VBox>
-
-            <HBox alignment="CENTER_RIGHT" spacing="15.0">
-               <children>
-                  <Button fx:id="cancelButton" mnemonicParsing="false" style="-fx-background-color: transparent; -fx-text-fill: #6c757d; -fx-cursor: hand;" text="Cancel">
-                     <font>
-                        <Font size="14.0" />
-                     </font>
-                  </Button>
-                  <Button fx:id="createButton" mnemonicParsing="false" prefHeight="38.0" prefWidth="100.0" style="-fx-background-color: #0078FF; -fx-text-fill: white; -fx-background-radius: 8; -fx-cursor: hand;" text="Create">
-                     <font>
-                        <Font name="System Bold" size="14.0" />
-                     </font>
-                  </Button>
-               </children>
-               <VBox.margin>
-                  <Insets top="5.0" />
-               </VBox.margin>
-            </HBox>
+            <TextField fx:id="searchUserField" prefHeight="40.0" promptText="Type username or phone and press Enter..." style="-fx-background-radius: 8; -fx-border-radius: 8; -fx-border-color: #ced4da; -fx-background-color: #f8f9fa;">
+               <font>
+                  <Font size="14.0" />
+               </font>
+            </TextField>
          </children>
       </VBox>
+
+      <VBox spacing="5.0">
+         <children>
+            <Label text="Group Name" textFill="#6c757d">
+               <font>
+                  <Font size="13.0" />
+               </font>
+            </Label>
+            <TextField fx:id="groupNameField" prefHeight="40.0" promptText="Enter group name..." style="-fx-background-radius: 8; -fx-border-radius: 8; -fx-border-color: #ced4da; -fx-background-color: #f8f9fa;">
+               <font>
+                  <Font size="14.0" />
+               </font>
+            </TextField>
+         </children>
+      </VBox>
+
+      <VBox spacing="5.0" VBox.vgrow="ALWAYS">
+         <children>
+            <Label text="Select members:" textFill="#6c757d">
+               <font>
+                  <Font size="13.0" />
+               </font>
+            </Label>
+            <ListView fx:id="contactListView" style="-fx-background-radius: 8; -fx-border-radius: 8; -fx-border-color: #ced4da; -fx-control-inner-background: #ffffff;" VBox.vgrow="ALWAYS" />
+         </children>
+      </VBox>
+
+      <HBox alignment="CENTER_RIGHT" spacing="15.0">
+         <children>
+            <Button fx:id="cancelButton" mnemonicParsing="false" style="-fx-background-color: transparent; -fx-text-fill: #6c757d; -fx-cursor: hand;" text="Cancel">
+               <font>
+                  <Font size="14.0" />
+               </font>
+            </Button>
+            <Button fx:id="createButton" mnemonicParsing="false" prefHeight="38.0" prefWidth="100.0" style="-fx-background-color: #0078FF; -fx-text-fill: white; -fx-background-radius: 8; -fx-cursor: hand;" text="Create">
+               <font>
+                  <Font name="System Bold" size="14.0" />
+               </font>
+            </Button>
+         </children>
+         <VBox.margin>
+            <Insets top="5.0" />
+         </VBox.margin>
+      </HBox>
    </children>
-</StackPane>
+</VBox>

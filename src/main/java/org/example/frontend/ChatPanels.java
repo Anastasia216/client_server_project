@@ -14,8 +14,6 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.Priority;
-import javafx.scene.paint.Color;
-import javafx.scene.shape.Circle;
 import javafx.stage.Modality;
 import javafx.stage.Popup;
 import javafx.stage.Stage;
@@ -36,26 +34,27 @@ public class ChatPanels {
     @FXML private Button fabButton;
     @FXML private Button attachmentButton;
     @FXML private Button sendButton;
-
+    @FXML private Button logoutHeaderButton;
+    @FXML private Label selectChatPlaceholderLabel;
+    @FXML private ScrollPane chatScrollPane;
+    @FXML private Label chatStatusLabel;
+    @FXML private Button menuLeftHeaderButton;
     @FXML private Button searchHeaderButton;
     @FXML private Button menuHeaderButton;
 
+    private String currentChatPeerStatus = "";
     private int currentActiveChatId = -1;
     private String currentChatType = "PRIVATE";
     private String currentChatUserRole = "USER";
+    private final java.util.List<String> allChats = new java.util.ArrayList<>();
 
     @FXML
     public void initialize() {
         NetworkClient.getInstance().setActiveController(this);
         NetworkClient.getInstance().sendGetChatsRequest();
 
-        searchField.setOnAction(event -> {
-            String query = searchField.getText().trim();
-            if (!query.isEmpty()) {
-                NetworkClient.getInstance().sendSearchRequest(query);
-            } else {
-                NetworkClient.getInstance().sendGetChatsRequest();
-            }
+        searchField.textProperty().addListener((observable, oldValue, newValue) -> {
+            filterChats(newValue.trim().toLowerCase());
         });
 
         attachmentButton.setOnAction(event -> handleAttachment());
@@ -67,35 +66,67 @@ public class ChatPanels {
             }
         });
 
+        setupLeftMenuPopup();
         setupFabPopup();
         setupChatCells();
+        updateRightPanelState(false);
     }
 
+    private void filterChats(String query) {
+        if (query.isEmpty()) {
+            ChatListView.getItems().setAll(allChats);
+            return;
+        }
+
+        java.util.List<String> filtered = new java.util.ArrayList<>();
+        for (String chatRow : allChats) {
+            String displayName = chatRow;
+            if (chatRow.contains(":::")) {
+                displayName = chatRow.split(":::")[0];
+            }
+            if (displayName.contains(" (ID:")) {
+                displayName = displayName.split(" \\(ID:")[0];
+            }
+            if (displayName.toLowerCase().contains(query)) {
+                filtered.add(chatRow);
+            }
+        }
+        ChatListView.getItems().setAll(filtered);
+    }
     private void parseAndOpenChat(String selectedItem) {
         try {
             String cleanItem = selectedItem.trim();
+            String chatName = "";
+
             if (cleanItem.contains(":::")) {
                 String[] metadata = cleanItem.split(":::");
-                String chatName = metadata[0].trim();
+                chatName = metadata[0].trim();
                 this.currentChatType = metadata[1].trim();
+
                 String[] roleAndId = metadata[2].split(" \\(ID: ");
                 this.currentChatUserRole = roleAndId[0].trim();
                 this.currentActiveChatId = Integer.parseInt(roleAndId[1].replace(")", "").trim());
-                chatContactNameLabel.setText(chatName);
             } else if (cleanItem.contains(" (ID: ")) {
-                String chatName = cleanItem.split(" \\(ID:")[0].trim();
+                chatName = cleanItem.split(" \\(ID:")[0].trim();
                 String idString = cleanItem.substring(cleanItem.lastIndexOf(":") + 1, cleanItem.lastIndexOf(")")).trim();
                 this.currentActiveChatId = Integer.parseInt(idString);
 
-                if (chatName.equalsIgnoreCase("Girlss") || chatName.equalsIgnoreCase("TEST") || chatName.toLowerCase().contains("group")) {
-                    this.currentChatType = "GROUP";
-                    this.currentChatUserRole = "ADMIN";
-                } else {
-                    this.currentChatType = "PRIVATE";
-                    this.currentChatUserRole = "USER";
-                }
+                this.currentChatType = "PRIVATE";
+                this.currentChatUserRole = "USER";
+            }
+
+            this.currentChatPeerStatus = "";
+            if (chatName.contains(" | ")) {
+                String[] parts = chatName.split(" \\| ");
+                chatName = parts[0].trim();
+                this.currentChatPeerStatus = parts[1].trim().toUpperCase();
+            }
+
+            if (chatContactNameLabel != null) {
                 chatContactNameLabel.setText(chatName);
             }
+
+            updateHeaderStatusDisplay();
 
             if (searchHeaderButton != null) {
                 searchHeaderButton.setVisible(false);
@@ -103,11 +134,11 @@ public class ChatPanels {
             }
 
             setupHeaderMenu();
+            updateRightPanelState(true);
 
         } catch (Exception e) {
             System.err.println("[UI ERROR] Failed to parse chat metadata: " + e.getMessage());
             this.currentActiveChatId = -1;
-            chatContactNameLabel.setText("Select Chat");
         }
 
         if (messagesVBox != null) {
@@ -119,28 +150,77 @@ public class ChatPanels {
         }
     }
 
+    private void updateHeaderStatusDisplay() {
+        if (chatStatusLabel == null) return;
+        if ("PRIVATE".equalsIgnoreCase(currentChatType) && !currentChatPeerStatus.isEmpty()) {
+            if ("ONLINE".equals(currentChatPeerStatus)) {
+                chatStatusLabel.setText("Online");
+                chatStatusLabel.setStyle("-fx-text-fill: #0078FF; -fx-font-size: 12px;");
+            } else {
+                chatStatusLabel.setText("Offline");
+                chatStatusLabel.setStyle("-fx-text-fill: #6c757d; -fx-font-size: 12px;");
+            }
+        } else {
+            chatStatusLabel.setText("");
+        }
+    }
+
+    private void updateRightPanelState(boolean isChatSelected) {
+        if (selectChatPlaceholderLabel != null) {
+            selectChatPlaceholderLabel.setVisible(!isChatSelected);
+            selectChatPlaceholderLabel.setManaged(!isChatSelected);
+        }
+
+        if (chatHeaderBox != null) {
+            chatHeaderBox.setVisible(isChatSelected);
+            chatHeaderBox.setManaged(isChatSelected);
+        }
+
+        if (chatScrollPane != null) {
+            chatScrollPane.setVisible(isChatSelected);
+            chatScrollPane.setManaged(isChatSelected);
+        }
+
+        if (messageInputField != null && messageInputField.getParent() instanceof HBox inputBar) {
+            inputBar.setVisible(isChatSelected);
+            inputBar.setManaged(isChatSelected);
+        }
+        if (!isChatSelected && chatStatusLabel != null) {
+            chatStatusLabel.setText("");
+        }
+    }
+    @FXML
+    private void handleHeaderLogout() {
+        NetworkClient.getInstance().disconnect();
+        SceneSwitcher.navigate(logoutHeaderButton, "Login.fxml");
+    }
+
     private void setupHeaderMenu() {
         ContextMenu contextMenu = new ContextMenu();
         contextMenu.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 8; -fx-padding: 5;");
+
         if ("PRIVATE".equalsIgnoreCase(currentChatType)) {
             MenuItem deleteChatItem = new MenuItem("Delete Chat");
             deleteChatItem.setStyle("-fx-text-fill: #ef4444; -fx-font-weight: bold;");
             deleteChatItem.setOnAction(e -> {
                 Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-                alert.setTitle("Delete Chat");
-                alert.setContentText("This action will delete the chat for BOTH users. Proceed?");
+                alert.setTitle("Delete Chat Completely?");
+                alert.setHeaderText("Warning: Dangerous action!");
+                alert.setContentText("This chat, along with all history, will be permanently deleted for BOTH users. Proceed?");
+
                 alert.showAndWait().ifPresent(response -> {
                     if (response == ButtonType.OK) {
                         NetworkClient.getInstance().sendDeleteChatRequest(currentActiveChatId);
+
                         messagesVBox.getChildren().clear();
-                        chatContactNameLabel.setText("Select Chat");
                         currentActiveChatId = -1;
+                        updateRightPanelState(false);
                     }
                 });
             });
             contextMenu.getItems().add(deleteChatItem);
         } else {
-            MenuItem groupInfoItem = new MenuItem("Group Members & Roles");
+            MenuItem groupInfoItem = new MenuItem("Group Members");
             groupInfoItem.setOnAction(e -> NetworkClient.getInstance().sendGetGroupMembersRequest(currentActiveChatId));
             contextMenu.getItems().add(groupInfoItem);
 
@@ -149,7 +229,7 @@ public class ChatPanels {
                 renameGroupItem.setOnAction(e -> {
                     TextInputDialog dialog = new TextInputDialog(chatContactNameLabel.getText());
                     dialog.setTitle("Rename Group");
-                    dialog.setHeaderText("Enter new name:");
+                    dialog.setHeaderText("Enter new name for this chat:");
                     dialog.showAndWait().ifPresent(newName -> {
                         if (!newName.trim().isEmpty()) {
                             NetworkClient.getInstance().sendRenameChatRequest(currentActiveChatId, newName.trim());
@@ -157,12 +237,27 @@ public class ChatPanels {
                     });
                 });
 
+                MenuItem leaveGroupItem = new MenuItem("Leave Group");
+                leaveGroupItem.setStyle("-fx-text-fill: #f59e0b;");
+                leaveGroupItem.setOnAction(e -> {
+                    Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+                    alert.setTitle("Leave Group");
+                    alert.setHeaderText("Confirmation required");
+                    alert.setContentText("Are you sure you want to leave this group? If you are the sole administrator, the system will prevent this action.");
+                    alert.showAndWait().ifPresent(r -> {
+                        if (r == ButtonType.OK) {
+                            NetworkClient.getInstance().sendLeaveChatRequest(currentActiveChatId);
+                        }
+                    });
+                });
+
                 MenuItem deleteGroupItem = new MenuItem("Delete Group");
-                deleteGroupItem.setStyle("-fx-text-fill: #ef4444;");
+                deleteGroupItem.setStyle("-fx-text-fill: #ef4444; -fx-font-weight: bold;");
                 deleteGroupItem.setOnAction(e -> {
                     Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
                     alert.setTitle("Delete Group");
-                    alert.setContentText("Permanently delete this group chat for all participants?");
+                    alert.setHeaderText("Delete Group Chat?");
+                    alert.setContentText("Are you sure you want to permanently delete this group chat for ALL participants?");
                     alert.showAndWait().ifPresent(r -> {
                         if (r == ButtonType.OK) {
                             NetworkClient.getInstance().sendDeleteChatRequest(currentActiveChatId);
@@ -170,77 +265,201 @@ public class ChatPanels {
                     });
                 });
 
-                contextMenu.getItems().addAll(new SeparatorMenuItem(), renameGroupItem, deleteGroupItem);
+                contextMenu.getItems().addAll(new SeparatorMenuItem(), renameGroupItem, leaveGroupItem, deleteGroupItem);
+
+            } else {
+                MenuItem leaveGroupItem = new MenuItem("Leave Group");
+                leaveGroupItem.setStyle("-fx-text-fill: #f59e0b;");
+                leaveGroupItem.setOnAction(e -> {
+                    Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+                    alert.setTitle("Leave Group");
+                    alert.setHeaderText("Confirmation required");
+                    alert.setContentText("Are you sure you want to leave this group? If you are the sole administrator, the system will prevent this action.");
+                    alert.showAndWait().ifPresent(r -> {
+                        if (r == ButtonType.OK) {
+                            NetworkClient.getInstance().sendLeaveChatRequest(currentActiveChatId);
+                        }
+                    });
+                });
+                contextMenu.getItems().addAll(new SeparatorMenuItem(), leaveGroupItem);
             }
         }
-
         menuHeaderButton.setOnAction(event -> {
             Bounds bounds = menuHeaderButton.localToScreen(menuHeaderButton.getBoundsInLocal());
-            contextMenu.show(menuHeaderButton, bounds.getMinX() - 120, bounds.getMaxY() + 5);
+            contextMenu.show(menuHeaderButton, bounds.getMinX() - 140, bounds.getMaxY() + 5);
         });
     }
+
     public void showGroupMembersWindow(String rawMembersData) {
         Platform.runLater(() -> {
-            VBox root = new VBox(10);
+            VBox root = new VBox(12);
             root.setStyle("-fx-padding: 20; -fx-background-color: #ffffff;");
             root.setAlignment(Pos.TOP_CENTER);
 
-            Label titleLabel = new Label("Group Participants & Roles");
+            int membersCount = 0;
+            if (rawMembersData != null && !rawMembersData.trim().isEmpty()) {
+                String[] items = rawMembersData.split("\\|\\|\\|");
+                membersCount = items.length;
+            }
+
+            Label titleLabel = new Label("Group Members (" + membersCount + ")");
             titleLabel.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #1c1c1e;");
             root.getChildren().add(titleLabel);
 
+            java.util.Set<String> currentChatUsernames = new java.util.HashSet<>();
+            if (rawMembersData != null && !rawMembersData.trim().isEmpty()) {
+                String[] items = rawMembersData.split("\\|\\|\\|");
+                for (String item : items) {
+                    String[] parts = item.split(":::");
+                    if (parts.length >= 2) {
+                        currentChatUsernames.add(parts[1].trim().toLowerCase());
+                    }
+                }
+            }
+
+            if ("ADMIN".equalsIgnoreCase(currentChatUserRole)) {
+                HBox adminActionsBox = new HBox(10);
+                adminActionsBox.setAlignment(Pos.CENTER);
+
+                Button addAdminBtn = new Button("Add Admin");
+                addAdminBtn.setStyle("-fx-background-color: #10B981; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6; -fx-cursor: hand;");
+                addAdminBtn.setPrefWidth(170);
+                addAdminBtn.setOnAction(e -> {
+                    TextInputDialog dialog = new TextInputDialog();
+                    dialog.setTitle("Promote to Admin");
+                    dialog.setHeaderText("Grant Admin Rights");
+                    dialog.setContentText("Enter Username of the participant:");
+                    dialog.showAndWait().ifPresent(username -> {
+                        String cleanUsername = username.trim();
+                        if (!cleanUsername.isEmpty()) {
+                            if (!currentChatUsernames.contains(cleanUsername.toLowerCase())) {
+                                Alert alert = new Alert(Alert.AlertType.WARNING);
+                                alert.setTitle("Validation Error");
+                                alert.setHeaderText("User Not in Group");
+                                alert.setContentText("You can only promote users who are already participants of this group chat.");
+                                alert.showAndWait();
+                                return;
+                            }
+                            NetworkClient.getInstance().sendPromoteToAdminRequest(currentActiveChatId, cleanUsername);
+                            addAdminBtn.getScene().getWindow().hide();
+                        }
+                    });
+                });
+
+                Button addMemberBtn = new Button("Add Member");
+                addMemberBtn.setStyle("-fx-background-color: #0078FF; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6; -fx-cursor: hand;");
+                addMemberBtn.setPrefWidth(170);
+                addMemberBtn.setOnAction(e -> {
+                    TextInputDialog dialog = new TextInputDialog();
+                    dialog.setTitle("Add Member");
+                    dialog.setHeaderText("Invite New Participant");
+                    dialog.setContentText("Enter Username or phone number:");
+                    dialog.showAndWait().ifPresent(identifier -> {
+                        if (!identifier.trim().isEmpty()) {
+                            Message msg = new Message(CommandType.ADD_GROUP_MEMBER, NetworkClient.getInstance().getMyUserId(), currentActiveChatId + ";" + identifier.trim());
+                            NetworkClient.getInstance().sendPacket(new org.example.protocol.MessagePacket((byte) 1, System.currentTimeMillis(), msg));
+                            addMemberBtn.getScene().getWindow().hide();
+                        }
+                    });
+                });
+
+                adminActionsBox.getChildren().addAll(addAdminBtn, addMemberBtn);
+                root.getChildren().add(adminActionsBox);
+            }
+
             ListView<HBox> membersListView = new ListView<>();
-            membersListView.setPrefHeight(320);
+            membersListView.setPrefHeight(300);
 
             if (rawMembersData != null && !rawMembersData.trim().isEmpty()) {
                 String[] items = rawMembersData.split("\\|\\|\\|");
                 for (String item : items) {
                     String[] parts = item.split(":::");
                     if (parts.length < 3) continue;
-                    int uId = Integer.parseInt(parts[0]);
-                    String uName = parts[1];
-                    String uRole = parts[2];
+
+                    String uName = parts[1].trim();
+                    String uRole = parts[2].trim();
+
                     HBox row = new HBox(12);
                     row.setAlignment(Pos.CENTER_LEFT);
+
                     Label nameLbl = new Label(uName);
-                    nameLbl.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
+                    nameLbl.setStyle("-fx-font-weight: bold; -fx-text-fill: #1c1c1e; -fx-font-size: 18px;");
                     Label roleLbl = new Label("[" + uRole + "]");
                     roleLbl.setStyle("-fx-text-fill: " + ("ADMIN".equalsIgnoreCase(uRole) ? "#ef4444" : "#6c757d") + "; -fx-font-size: 12px;");
-                    row.getChildren().addAll(nameLbl, roleLbl);
-                    Region spacer = new Region();
-                    HBox.setHgrow(spacer, Priority.ALWAYS);
-                    row.getChildren().add(spacer);
 
-                    if ("ADMIN".equalsIgnoreCase(currentChatUserRole) && !"ADMIN".equalsIgnoreCase(uRole)) {
-                        Button promoteBtn = new Button("⚡ Promote");
-                        promoteBtn.setStyle("-fx-background-color: #10B981; -fx-text-fill: white; -fx-font-size: 11px; -fx-background-radius: 4; -fx-cursor: hand;");
-                        promoteBtn.setOnAction(e -> {
-                            NetworkClient.getInstance().sendPromoteToAdminRequest(currentActiveChatId, uId);
-                            promoteBtn.setDisable(true);
+                    row.getChildren().addAll(nameLbl, roleLbl);
+
+                    if ("ADMIN".equalsIgnoreCase(currentChatUserRole) && "USER".equalsIgnoreCase(uRole)) {
+                        Region spacer = new Region();
+                        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+                        Button removeUserBtn = new Button("Remove");
+                        removeUserBtn.setStyle("-fx-background-color: #ef4444; -fx-text-fill: white; -fx-font-size: 11px; -fx-font-weight: bold; -fx-background-radius: 4; -fx-cursor: hand;");
+                        removeUserBtn.setOnAction(e -> {
+                            Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+                            alert.setTitle("Remove User");
+                            alert.setHeaderText("Remove participant from group");
+                            alert.setContentText("Are you sure you want to remove " + uName + " from this chat?");
+                            alert.showAndWait().ifPresent(r -> {
+                                if (r == ButtonType.OK) {
+                                    Message msg = new Message(CommandType.REMOVE_GROUP_MEMBER, NetworkClient.getInstance().getMyUserId(), currentActiveChatId + ";" + uName);
+                                    NetworkClient.getInstance().sendPacket(new org.example.protocol.MessagePacket((byte) 1, System.currentTimeMillis(), msg));
+                                    removeUserBtn.getScene().getWindow().hide();
+                                }
+                            });
                         });
-                        row.getChildren().add(promoteBtn);
+                        row.getChildren().addAll(spacer, removeUserBtn);
                     }
+
                     membersListView.getItems().add(row);
                 }
             }
+
             root.getChildren().add(membersListView);
+
             Stage stage = new Stage();
-            stage.setTitle("Members Control Panel");
+            stage.setTitle("Members Panel");
             stage.initModality(Modality.APPLICATION_MODAL);
             stage.initOwner(menuHeaderButton.getScene().getWindow());
-            stage.setScene(new Scene(root, 390, 420));
+            stage.setScene(new Scene(root, 390, 430));
             stage.show();
         });
     }
-
     public void handleSystemStatus(Message msg) {
         Platform.runLater(() -> {
             if (msg.getCommandType() == CommandType.STATUS_OK) {
                 String text = msg.getText();
 
+                if (text != null && text.startsWith("STATUS_UPDATE;")) {
+                    String[] tokens = text.split(";");
+                    int updatedUserId = Integer.parseInt(tokens[1]);
+                    String newStatus = tokens[2];
+                    if (currentActiveChatId == updatedUserId && "PRIVATE".equalsIgnoreCase(currentChatType)) {
+                        currentChatPeerStatus = newStatus;
+                        updateHeaderStatusDisplay();
+                    }
+                    NetworkClient.getInstance().sendGetChatsRequest();
+                    return;
+                }
                 if ("SILENT_OK".equals(text)) return;
 
+                if ("SUCCESS:USER_ADDED_TO_GROUP".equals(text)) {
+                    Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                    alert.setTitle("Success");
+                    alert.setHeaderText(null);
+                    alert.setContentText("The user has been successfully added to this group chat.");
+                    alert.showAndWait();
+
+                    NetworkClient.getInstance().sendGetGroupMembersRequest(currentActiveChatId);
+                    return;
+                }
+
                 if ("SUCCESS:GROUP_CREATED".equals(text) || "SUCCESS:REFRESH_CHATS".equals(text)) {
+                    if ("SUCCESS:REFRESH_CHATS".equals(text) && currentActiveChatId != -1) {
+                        messagesVBox.getChildren().clear();
+                        currentActiveChatId = -1;
+                        updateRightPanelState(false);
+                    }
                     NetworkClient.getInstance().sendGetChatsRequest();
                     return;
                 }
@@ -252,15 +471,65 @@ public class ChatPanels {
                     return;
                 }
 
-                ChatListView.getItems().clear();
-                if (text != null && !text.trim().isEmpty()) {
+                if ("SUCCESS:USER_REMOVED".equals(text)) {
+                    Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                    alert.setTitle("Success");
+                    alert.setHeaderText(null);
+                    alert.setContentText("The participant has been successfully removed from the group.");
+                    alert.showAndWait();
+
+                    NetworkClient.getInstance().sendGetGroupMembersRequest(currentActiveChatId);
+                    return;
+                }
+
+                if (text.contains(":::") && !text.contains(" (ID: ")) {
+                    showGroupMembersWindow(text);
+                    return;
+                }
+
+                if (text != null && !text.trim().isEmpty() && text.contains(" (ID: ")) {
+                    allChats.clear();
+                    ChatListView.getItems().clear();
+
                     String[] chats = text.split(";");
                     for (String chatRow : chats) {
                         if (chatRow != null && !chatRow.trim().isEmpty()) {
-                            ChatListView.getItems().add(chatRow);
+                            allChats.add(chatRow);
                         }
                     }
+                    ChatListView.getItems().setAll(allChats);
+
+                    if (searchField != null && !searchField.getText().trim().isEmpty()) {
+                        filterChats(searchField.getText().trim().toLowerCase());
+                    }
                 }
+            }
+            else if (msg.getCommandType() == CommandType.STATUS_ERROR) {
+                String errorText = msg.getText();
+                Alert alert = new Alert(Alert.AlertType.ERROR);
+                alert.setTitle("Operation Error");
+                alert.setHeaderText("Failed to complete action");
+
+                if ("ERROR:PRIVATE_CHAT_ALREADY_EXISTS".equals(errorText)) {
+                    alert.setContentText("A private chat with this user already exists in your chat list.");
+                } else if ("ERROR:USER_NOT_FOUND".equals(errorText)) {
+                    alert.setContentText("The specified user (Username or Phone) was not found in the system.");
+                }
+                if ("ERROR:USER_NOT_FOUND".equals(errorText)) {
+                    alert.setContentText("The specified user (Username or Phone) was not found in the system.");
+                } else if ("ERROR:ALREADY_IN_CHAT".equals(errorText)) {
+                    alert.setContentText("This user is already a member of this chat room.");
+                } else if ("ERROR:NOT_AN_ADMIN".equals(errorText)) {
+                    alert.setContentText("You do not have administrative privileges to perform this action.");
+                } else if ("ERROR:SOLE_ADMIN".equals(errorText)) {
+                    alert.setAlertType(Alert.AlertType.WARNING);
+                    alert.setTitle("Action Denied");
+                    alert.setHeaderText("Cannot Leave Group");
+                    alert.setContentText("You are the only administrator in this group. You cannot leave until you appoint another administrator or delete the group completely.");
+                } else {
+                    alert.setContentText("Server returned an error: " + errorText);
+                }
+                alert.showAndWait();
             }
         });
     }
@@ -380,7 +649,7 @@ public class ChatPanels {
                 }
             });
 
-            Button closeButton = new Button("✕ Close");
+            Button closeButton = new Button("Close");
             closeButton.setStyle("-fx-background-color: transparent; -fx-text-fill: #94A3B8; -fx-cursor: hand;");
             HBox topBar = new HBox(15, saveButton, closeButton);
             topBar.setAlignment(Pos.CENTER_RIGHT);
@@ -500,6 +769,37 @@ public class ChatPanels {
         }
     }
 
+    private void setupLeftMenuPopup() {
+        Popup leftMenuPopup = new Popup();
+        leftMenuPopup.setAutoHide(true);
+        VBox popupMenu = new VBox(5);
+        popupMenu.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 12; -fx-padding: 8; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.15), 10, 0, 0, 4);");
+
+        Button btnInfo = new Button("Info");
+        btnInfo.setStyle("-fx-background-color: transparent; -fx-text-fill: #1c1c1e; -fx-font-size: 14px; -fx-cursor: hand; -fx-pref-width: 110; -fx-alignment: CENTER_LEFT;");
+        btnInfo.setOnAction(e -> {
+            leftMenuPopup.hide();
+            openModalWindow("UresInfo.fxml", "My Profile");
+        });
+
+        Button btnLogout = new Button("Log Out");
+        btnLogout.setStyle("-fx-background-color: transparent; -fx-text-fill: #ef4444; -fx-font-size: 14px; -fx-font-weight: bold; -fx-cursor: hand; -fx-pref-width: 110; -fx-alignment: CENTER_LEFT;");
+        btnLogout.setOnAction(e -> {
+            leftMenuPopup.hide();
+            NetworkClient.getInstance().disconnect();
+            SceneSwitcher.navigate(menuLeftHeaderButton, "Login.fxml");
+        });
+
+        popupMenu.getChildren().addAll(btnInfo, btnLogout);
+        leftMenuPopup.getContent().add(popupMenu);
+
+        menuLeftHeaderButton.setOnAction(event -> {
+            Bounds bounds = menuLeftHeaderButton.localToScreen(menuLeftHeaderButton.getBoundsInLocal());
+            if (bounds != null) {
+                leftMenuPopup.show(menuLeftHeaderButton, bounds.getMinX(), bounds.getMaxY() + 5);
+            }
+        });
+    }
     private void setupFabPopup() {
         Popup fabPopup = new Popup();
         fabPopup.setAutoHide(true);
@@ -514,21 +814,14 @@ public class ChatPanels {
         btnAddContact.setStyle("-fx-background-color: transparent; -fx-text-fill: #1c1c1e; -fx-font-size: 14px; -fx-cursor: hand;");
         btnAddContact.setOnAction(e -> { fabPopup.hide(); openModalWindow("AddContact.fxml", "New Contact"); });
 
-        Button btnLogout = new Button("Log Out");
-        btnLogout.setStyle("-fx-background-color: transparent; -fx-text-fill: #ef4444; -fx-font-weight: bold; -fx-font-size: 14px; -fx-cursor: hand;");
-        btnLogout.setOnAction(e -> {
-            fabPopup.hide();
-            NetworkClient.getInstance().disconnect();
-            SceneSwitcher.navigate(fabButton, "Login.fxml");
-        });
 
-        popupMenu.getChildren().addAll(btnNewGroup, btnAddContact, new Separator(), btnLogout);
+        popupMenu.getChildren().addAll(btnNewGroup, btnAddContact);
         fabPopup.getContent().add(popupMenu);
 
         fabButton.setOnAction(event -> {
             Bounds bounds = fabButton.localToScreen(fabButton.getBoundsInLocal());
             if (bounds != null) {
-                fabPopup.show(fabButton, bounds.getMinX() - 140, bounds.getMinY() - 130);
+                fabPopup.show(fabButton, bounds.getMinX() - 140, bounds.getMinY() - 90);
             }
         });
     }
@@ -557,9 +850,10 @@ public class ChatPanels {
                     setText(null);
                     setGraphic(null);
                 } else {
-                    HBox root = new HBox(15);
+                    HBox root = new HBox(10);
                     root.setAlignment(Pos.CENTER_LEFT);
-                    Circle avatar = new Circle(22, Color.web("#e2e8f0"));
+                    root.setStyle("-fx-padding: 6px 12px;");
+
                     String displayName = item;
                     if (item.contains(":::")) {
                         displayName = item.split(":::")[0];
@@ -567,9 +861,42 @@ public class ChatPanels {
                     if (displayName.contains(" (ID:")) {
                         displayName = displayName.split(" \\(ID:")[0];
                     }
-                    Label nameLabel = new Label(displayName.trim());
-                    nameLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #1c1c1e; -fx-font-size: 14px;");
-                    root.getChildren().addAll(avatar, nameLabel);
+
+                    displayName = displayName.trim();
+
+                    Label nameLabel = new Label();
+                    nameLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #1c1c1e; -fx-font-size: 16px;");
+
+                    if (displayName.contains(" | ")) {
+                        String[] parts = displayName.split(" \\| ");
+                        String realName = parts[0].trim();
+                        String statusText = parts[1].trim().toUpperCase();
+
+                        nameLabel.setText(realName);
+
+                        Label statusLabel = new Label(statusText.equalsIgnoreCase("ONLINE") ? "Online" : "Offline");
+
+                        selectedProperty().addListener((obs, wasSelected, isSelected) -> {
+                            if (isSelected) {
+                                statusLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #e2e8f0;");
+                            } else {
+                                statusLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: " +
+                                        (statusText.equalsIgnoreCase("ONLINE") ? "#0078FF;" : "#6c757d;"));
+                            }
+                        });
+
+                        statusLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: " +
+                                (statusText.equalsIgnoreCase("ONLINE") ? "#0078FF;" : "#6c757d;"));
+
+                        Region spacer = new Region();
+                        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+                        root.getChildren().addAll(nameLabel, spacer, statusLabel);
+                    } else {
+                        nameLabel.setText(displayName);
+                        root.getChildren().add(nameLabel);
+                    }
+
                     setGraphic(root);
                     setText(null);
                 }
