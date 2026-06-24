@@ -30,7 +30,7 @@
                   <Font size="13.0" />
                </font>
             </Label>
-            <TextField fx:id="searchUserField" prefHeight="40.0" promptText="Type username or phone and press Enter..." style="-fx-background-radius: 8; -fx-border-radius: 8; -fx-border-color: #ced4da; -fx-background-color: #f8f9fa;">
+            <TextField fx:id="searchUserField" prefHeight="40.0" promptText="Type username or phone..." style="-fx-background-radius: 8; -fx-border-radius: 8; -fx-border-color: #ced4da; -fx-background-color: #f8f9fa;">
                <font>
                   <Font size="14.0" />
                </font>

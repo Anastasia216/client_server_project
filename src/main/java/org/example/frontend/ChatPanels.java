@@ -11,10 +11,7 @@ import javafx.scene.image.ImageView;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
-import javafx.scene.layout.Region;
-import javafx.scene.layout.Priority;
+import javafx.scene.layout.*;
 import javafx.stage.Modality;
 import javafx.stage.Popup;
 import javafx.stage.Stage;
@@ -72,10 +69,6 @@ public class ChatPanels {
         setupLeftMenuPopup();
         setupFabPopup();
         setupChatCells();
-        if ("ADMIN".equalsIgnoreCase(NetworkClient.getInstance().getMyRole())) {
-            adminPanelButton.setVisible(true);
-            adminPanelButton.setManaged(true);
-        }
     }
     @FXML
     private void openAdminPage(ActionEvent event) {
@@ -796,21 +789,37 @@ public class ChatPanels {
         popupMenu.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 12; -fx-padding: 8; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.15), 10, 0, 0, 4);");
 
         Button btnInfo = new Button("Info");
-        btnInfo.setStyle("-fx-background-color: transparent; -fx-text-fill: #1c1c1e; -fx-font-size: 14px; -fx-cursor: hand; -fx-pref-width: 110; -fx-alignment: CENTER_LEFT;");
+        btnInfo.setStyle("-fx-background-color: transparent; -fx-text-fill: #1c1c1e; -fx-font-size: 14px; -fx-cursor: hand; -fx-pref-width: 120; -fx-alignment: CENTER_LEFT;");
         btnInfo.setOnAction(e -> {
             leftMenuPopup.hide();
             openModalWindow("UresInfo.fxml", "My Profile");
         });
 
+        Button btnAdmin = new Button("Admin Panel");
+        btnAdmin.setStyle("-fx-background-color: transparent; -fx-text-fill: #10B981; -fx-font-weight: bold; -fx-font-size: 14px; -fx-cursor: hand; -fx-pref-width: 120; -fx-alignment: CENTER_LEFT;");
+        btnAdmin.setOnAction(e -> {
+            leftMenuPopup.hide();
+            try {
+                FXMLLoader loader = new FXMLLoader(getClass().getResource("/AdminPage.fxml"));
+                Parent root = loader.load();
+                Stage stage = (Stage) menuLeftHeaderButton.getScene().getWindow();
+                stage.setScene(new Scene(root));
+                stage.show();
+            } catch (IOException ex) {
+                System.err.println("[ERROR] Failed to load AdminPage.fxml: " + ex.getMessage());
+                ex.printStackTrace();
+            }
+        });
+
         Button btnLogout = new Button("Log Out");
-        btnLogout.setStyle("-fx-background-color: transparent; -fx-text-fill: #ef4444; -fx-font-size: 14px; -fx-font-weight: bold; -fx-cursor: hand; -fx-pref-width: 110; -fx-alignment: CENTER_LEFT;");
+        btnLogout.setStyle("-fx-background-color: transparent; -fx-text-fill: #ef4444; -fx-font-size: 14px; -fx-font-weight: bold; -fx-cursor: hand; -fx-pref-width: 120; -fx-alignment: CENTER_LEFT;");
         btnLogout.setOnAction(e -> {
             leftMenuPopup.hide();
             NetworkClient.getInstance().disconnect();
             SceneSwitcher.navigate(menuLeftHeaderButton, "Login.fxml");
         });
 
-        popupMenu.getChildren().addAll(btnInfo, btnLogout);
+        popupMenu.getChildren().addAll(btnInfo, btnAdmin, btnLogout);
         leftMenuPopup.getContent().add(popupMenu);
 
         menuLeftHeaderButton.setOnAction(event -> {

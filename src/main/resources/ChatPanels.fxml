@@ -27,17 +27,6 @@
                                     <children>
                                         <HBox alignment="CENTER_LEFT">
                                             <children>
-                                                <Label text="Messenger" textFill="#212529">
-                                                    <font>
-                                                        <Font name="System Bold" size="22.0" />
-                                                    </font>
-                                                </Label>
-                                                <Region HBox.hgrow="ALWAYS" /> <Button fx:id="adminPanelButton" mnemonicParsing="false" onAction="#openAdminPage"
-                                                                                       style="-fx-background-color: #dc3545; -fx-text-fill: white; -fx-background-radius: 5; -fx-cursor: hand;"
-                                                                                       text="Admin Panel" visible="false" managed="false">
-                                                <font><Font name="System Bold" size="12.0" /></font>
-                                            </Button>
-                                            </children>
                                                 <Label text="Chats " style="-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #1c1c1e;" />
                                                 <Region HBox.hgrow="ALWAYS" />
                                                 <Button fx:id="menuLeftHeaderButton" text="Menu" style="-fx-background-color: transparent; -fx-text-fill: #0078FF; -fx-font-weight: bold; -fx-font-size: 14px; -fx-cursor: hand; -fx-padding: 0;" /> </children>
@@ -101,12 +90,12 @@
                         <StackPane BorderPane.alignment="CENTER">
                             <children>
                                 <ScrollPane fx:id="chatScrollPane" fitToWidth="true" style="-fx-background-color: transparent; -fx-background: #ffffff;">                                    <content>
-                                        <VBox fx:id="messagesVBox" spacing="12.0">
-                                            <padding>
-                                                <Insets bottom="25.0" left="25.0" right="25.0" top="25.0" />
-                                            </padding>
-                                        </VBox>
-                                    </content>
+                                    <VBox fx:id="messagesVBox" spacing="12.0">
+                                        <padding>
+                                            <Insets bottom="25.0" left="25.0" right="25.0" top="25.0" />
+                                        </padding>
+                                    </VBox>
+                                </content>
                                 </ScrollPane>
 
                                 <Label fx:id="selectChatPlaceholderLabel" text="Select a chat to start messaging"
