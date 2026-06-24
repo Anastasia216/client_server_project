@@ -8,6 +8,7 @@ public enum CommandType {
     SEND_FILE(2003),
     DOWNLOAD_FILE(2004),
     SEARCH(2010),
+    MARK_AS_READ(2005),
 
     CREATE_CHAT(3001),
     ADD_USER_TO_CHAT(3002),
