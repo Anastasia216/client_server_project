@@ -12,7 +12,6 @@ public class SQLiteAttachmentDAO implements AttachmentDAO {
 
     @Override
     public Attachment save(Attachment attachment) {
-        // Поле upload_time ігноруємо в INSERT, оскільки в базі стоїть DEFAULT CURRENT_TIMESTAMP
         String sql = "INSERT INTO attachments (message_id, file_name, file_path, file_size) VALUES (?, ?, ?, ?)";
         try (Connection connection = DBManager.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {

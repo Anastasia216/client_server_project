@@ -16,7 +16,7 @@ public class MessageService {
     }
     // "chatId, message-text"
     public void sendMessageFromRaw(int senderId, String rawData) {
-        String[] parts = rawData.split(";", 2); // Розбиваємо тільки на 2 частини
+        String[] parts = rawData.split(";", 2);
         if (parts.length < 2) return;
 
         int chatId = Integer.parseInt(parts[0]);
