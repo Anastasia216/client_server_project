@@ -5,7 +5,7 @@ import org.example.database.DBManager;
 import org.example.models.User;
 
 import java.sql.*;
-import java.util.ArrayList;
+        import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -13,16 +13,23 @@ public class SQLiteUserDAO implements UserDAO {
 
     @Override
     public User save(User user) {
-        String sql = "INSERT INTO users (username, phone, password_hash, role, status, is_blocked) VALUES(?,?,?,?,?,?)";
+        String sql = """
+            INSERT INTO users (username, phone, password_hash, role, status, is_blocked) 
+            VALUES (?, ?, ?, 
+                CASE WHEN (SELECT COUNT(*) FROM users) = 0 THEN 'ADMIN' ELSE 'USER' END, 
+            ?, ?)
+        """;
+
         try (Connection connection = DBManager.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+
             statement.setString(1, user.getUsername());
             statement.setString(2, user.getPhone());
             statement.setString(3, user.getPasswordHash());
-            statement.setString(4, user.getRole());
-            statement.setString(5, user.getStatus());
-            statement.setBoolean(6, user.isBlocked());
+            statement.setString(4, user.getStatus());
+            statement.setBoolean(5, user.isBlocked());
             statement.executeUpdate();
+
             try (ResultSet generatedKeys = statement.getGeneratedKeys()) {
                 if (generatedKeys.next()) {
                     user.setUser_id(generatedKeys.getInt(1));
@@ -36,7 +43,6 @@ public class SQLiteUserDAO implements UserDAO {
 
     @Override
     public Optional<User> findById(long user_id) {
-        // ВИПРАВЛЕНО: назва колонки в БД 'id' замість 'user_id'
         String sql = "SELECT * FROM users WHERE user_id = ?";
         try (Connection connection = DBManager.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {

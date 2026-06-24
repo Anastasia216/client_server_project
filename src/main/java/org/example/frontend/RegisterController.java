@@ -32,6 +32,10 @@ public class RegisterController {
             errorLabel.setText("Please fill in all fields!");
             return;
         }
+        if (!phone.matches("^\\+380\\d{9}$")) {
+            errorLabel.setText("Phone must be in format: +380XXXXXXXXX");
+            return;
+        }
         if (!pass.equals(confirm)) {
             errorLabel.setText("Passwords do not match!");
             return;

@@ -44,7 +44,6 @@ public class Processor {
                     Optional<User> userOpt = authService.loginFromRaw(message.getText());
                     if (userOpt.isPresent()) {
                         User user = userOpt.get();
-                        System.out.println("[PROCESSOR] Authorization successful for: " + user.getUsername());
                         return new Message(CommandType.STATUS_OK, (int) user.getUser_id(), "SUCCESS;" + user.getRole());
                     } else {
                         return new Message(CommandType.STATUS_ERROR, 0, "ERROR:INVALID_USERNAME_OR_PASSWORD_OR_BLOCKED");
@@ -54,7 +53,6 @@ public class Processor {
                 case REGISTER -> {
                     Optional<User> registeredUserOpt = authService.registerFromRaw(message.getText());
                     if (registeredUserOpt.isPresent()) {
-                        System.out.println("[PROCESSOR] New user successfully registered via Phone.");
                         return new Message(CommandType.STATUS_OK, 0, "SUCCESS:REGISTRATION_COMPLETED");
                     } else {
                         return new Message(CommandType.STATUS_ERROR, 0, "ERROR:USERNAME_OR_PHONE_ALREADY_EXISTS");
@@ -97,11 +95,7 @@ public class Processor {
                         for (Chat chat : userChats) {
                             String chatName = chat.getName();
                             if (chat.getType() == org.example.models.ChatType.PRIVATE) {
-                                String sql = """
-                                    SELECT username FROM users 
-                                    JOIN chat_members ON users.user_id = chat_members.user_id 
-                                    WHERE chat_members.chat_id = ? AND users.user_id != ?
-                                """;
+                                String sql = "SELECT username FROM users JOIN chat_members ON users.user_id = chat_members.user_id WHERE chat_members.chat_id = ? AND users.user_id != ?";
                                 try (Connection conn = DBManager.getConnection();
                                      PreparedStatement stmt = conn.prepareStatement(sql)) {
                                     stmt.setLong(1, chat.getId());
@@ -199,12 +193,7 @@ public class Processor {
                 case GET_CHAT_HISTORY -> {
                     try {
                         int chatId = Integer.parseInt(message.getText());
-                        String sql = """
-                            SELECT users.username, messages.content FROM messages 
-                            JOIN users ON messages.sender_id = users.user_id 
-                            WHERE messages.chat_id = ? 
-                            ORDER BY messages.message_id ASC
-                        """;
+                        String sql = "SELECT users.username, messages.content FROM messages JOIN users ON messages.sender_id = users.user_id WHERE messages.chat_id = ? ORDER BY messages.message_id ASC";
                         StringBuilder sb = new StringBuilder();
                         try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
                              java.sql.PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -289,7 +278,6 @@ public class Processor {
                         int chatId = Integer.parseInt(message.getText().trim());
                         List<ChatMember> members = chatService.getChatMembers(chatId);
                         chatService.deleteChat(chatId);
-                        System.out.println("[PROCESSOR] Chat ID " + chatId + " was permanently deleted via clean SQL CASCADE.");
                         for (ChatMember member : members) {
                             if (member.getUserId() == message.getUserId()) continue;
                             ClientHandler peerHandler = ClientRegistry.getHandler((int) member.getUserId());
@@ -307,12 +295,7 @@ public class Processor {
                 case GET_GROUP_MEMBERS -> {
                     try {
                         int chatId = Integer.parseInt(message.getText().trim());
-                        String sql = """
-                            SELECT users.user_id, users.username, chat_members.role FROM chat_members
-                            JOIN users ON chat_members.user_id = users.user_id
-                            WHERE chat_members.chat_id = ?
-                            ORDER BY chat_members.role ASC, users.username ASC
-                        """;
+                        String sql = "SELECT users.user_id, users.username, chat_members.role FROM chat_members JOIN users ON chat_members.user_id = users.user_id WHERE chat_members.chat_id = ? ORDER BY chat_members.role ASC, users.username ASC";
 
                         StringBuilder sb = new StringBuilder();
                         try (java.sql.Connection conn = org.example.database.DBManager.getConnection();
@@ -362,7 +345,7 @@ public class Processor {
                 }
                 case RENAME_CHAT -> {
                     try {
-                        String[] tokens = message.getText().split(";", 2);
+                        String[] tokens = message.getText().split(";");
                         int chatId = Integer.parseInt(tokens[0]);
                         String newName = tokens[1].trim();
                         String checkSql = "SELECT role FROM chat_members WHERE chat_id = ? AND user_id = ?";
@@ -386,6 +369,79 @@ public class Processor {
                         return new Message(CommandType.STATUS_OK, chatId, "SUCCESS:RENAME;" + newName);
                     } catch (Exception e) {
                         return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:RENAME_FAILED");
+                    }
+                }
+
+                case GET_ADMIN_STATS -> {
+                    try {
+                        int onlineCount = ClientRegistry.getOnlineCount();
+                        long totalUsers = 0;
+                        long totalMessages = 0;
+                        try (Connection conn = DBManager.getConnection()) {
+                            ResultSet rsUsers = conn.createStatement().executeQuery("SELECT COUNT(*) FROM users");
+                            if (rsUsers.next()) totalUsers = rsUsers.getLong(1);
+
+                            ResultSet rsMsgs = conn.createStatement().executeQuery("SELECT COUNT(*) FROM messages");
+                            if (rsMsgs.next()) totalMessages = rsMsgs.getLong(1);
+                        }
+                        String stats = onlineCount + ";" + totalUsers + ";" + totalMessages;
+                        return new Message(CommandType.GET_ADMIN_STATS, message.getUserId(), stats);
+                    } catch (Exception e) {
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:STATS_FAILED");
+                    }
+                }
+
+                case GET_ALL_USERS -> {
+                    try {
+                        StringBuilder sb = new StringBuilder();
+                        try (Connection conn = DBManager.getConnection()) {
+                            ResultSet rs = conn.createStatement().executeQuery("SELECT user_id, status, role, is_blocked FROM users");
+                            while (rs.next()) {
+                                boolean isBlocked = rs.getInt("is_blocked") == 1;
+                                sb.append(rs.getInt("user_id")).append(",")
+                                        .append(rs.getString("status")).append(",")
+                                        .append(rs.getString("role")).append(",")
+                                        .append(isBlocked).append(";");
+                            }
+                        }
+                        return new Message(CommandType.GET_ALL_USERS, message.getUserId(), sb.toString());
+                    } catch (Exception e) {
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:USERS_FAILED");
+                    }
+                }
+
+                case ADMIN_ACTION_ROLE -> {
+                    try {
+                        String[] tokens = message.getText().split(";");
+                        int targetId = Integer.parseInt(tokens[0]);
+                        String newRole = tokens[1];
+                        try (Connection conn = DBManager.getConnection();
+                             PreparedStatement stmt = conn.prepareStatement("UPDATE users SET role = ? WHERE user_id = ?")) {
+                            stmt.setString(1, newRole);
+                            stmt.setInt(2, targetId);
+                            stmt.executeUpdate();
+                        }
+                        return new Message(CommandType.STATUS_OK, message.getUserId(), "SUCCESS:ROLE_CHANGED");
+                    } catch (Exception e) {
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:ROLE_CHANGE_FAILED");
+                    }
+                }
+
+                case ADMIN_ACTION_BLOCK -> {
+                    try {
+                        String[] tokens = message.getText().split(";");
+                        int targetId = Integer.parseInt(tokens[0]);
+                        boolean isBlocked = Boolean.parseBoolean(tokens[1]);
+                        int blockVal = isBlocked ? 1 : 0;
+                        try (Connection conn = DBManager.getConnection();
+                             PreparedStatement stmt = conn.prepareStatement("UPDATE users SET is_blocked = ? WHERE user_id = ?")) {
+                            stmt.setInt(1, blockVal);
+                            stmt.setInt(2, targetId);
+                            stmt.executeUpdate();
+                        }
+                        return new Message(CommandType.STATUS_OK, message.getUserId(), "SUCCESS:USER_BLOCKED");
+                    } catch (Exception e) {
+                        return new Message(CommandType.STATUS_ERROR, message.getUserId(), "ERROR:BLOCK_FAILED");
                     }
                 }
 

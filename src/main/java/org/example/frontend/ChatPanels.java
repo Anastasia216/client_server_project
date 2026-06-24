@@ -1,6 +1,7 @@
 package org.example.frontend;
 
 import javafx.application.Platform;
+import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.geometry.Bounds;
@@ -44,6 +45,8 @@ public class ChatPanels {
     private String currentChatType = "PRIVATE";
     private String currentChatUserRole = "USER";
 
+    @FXML private Button adminPanelButton;
+
     @FXML
     public void initialize() {
         NetworkClient.getInstance().setActiveController(this);
@@ -69,6 +72,23 @@ public class ChatPanels {
 
         setupFabPopup();
         setupChatCells();
+        if ("ADMIN".equalsIgnoreCase(NetworkClient.getInstance().getMyRole())) {
+            adminPanelButton.setVisible(true);
+            adminPanelButton.setManaged(true);
+        }
+    }
+    @FXML
+    private void openAdminPage(ActionEvent event) {
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/AdminPage.fxml"));
+            Parent root = loader.load();
+            Stage stage = new Stage();
+            stage.setTitle("Admin Control Panel");
+            stage.setScene(new Scene(root));
+            stage.show();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     private void parseAndOpenChat(String selectedItem) {
