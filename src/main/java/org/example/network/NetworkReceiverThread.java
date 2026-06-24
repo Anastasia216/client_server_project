@@ -13,7 +13,6 @@ public class NetworkReceiverThread implements Runnable {
     public void run() {
         System.out.println("[RECEIVER_THREAD] Background receiver thread started.");
         InputStream in = NetworkClient.getInstance().getInputStream();
-
         try {
             while (NetworkClient.getInstance().isConnected() && !NetworkClient.getInstance().getSocket().isClosed()) {
                 byte[] headerBase = in.readNBytes(MessagePacket.HEADER_SIZE);
@@ -21,7 +20,6 @@ public class NetworkReceiverThread implements Runnable {
                     System.out.println("[RECEIVER_THREAD] Stream closed. Stopping thread.");
                     break;
                 }
-
                 int wLen = ByteBuffer.wrap(headerBase, 10, 4).getInt();
                 int restSize = wLen + 2;
                 byte[] restBytes = in.readNBytes(restSize);
@@ -32,15 +30,12 @@ public class NetworkReceiverThread implements Runnable {
 
                 MessagePacket incomingPacket = MessagePacket.fromBytes(headerBase, restBytes);
                 Message responseMessage = incomingPacket.getMessage();
-
                 System.out.println("[RECEIVER_THREAD] Received packet: " + responseMessage.getCommandType());
 
                 Platform.runLater(() -> {
                     Object controller = NetworkClient.getInstance().getActiveController();
                     if (controller == null) return;
-
                     String controllerName = controller.getClass().getSimpleName();
-
                     try {
                         switch (responseMessage.getCommandType()) {
                             case STATUS_OK, STATUS_ERROR -> {
@@ -89,6 +84,13 @@ public class NetworkReceiverThread implements Runnable {
                                 if (controllerName.equals("ChatPanels")) {
                                     Method method = controller.getClass().getMethod("showGroupMembersWindow", String.class);
                                     method.invoke(controller, responseMessage.getText());
+                                }
+                            }
+
+                            case GET_ADMIN_STATS, GET_ALL_USERS, ADMIN_ACTION_ROLE, ADMIN_ACTION_BLOCK -> {
+                                if (controllerName.equals("AdminPage")) {
+                                    Method method = controller.getClass().getMethod("handleAdminResponse", Message.class);
+                                    method.invoke(controller, responseMessage);
                                 }
                             }
 

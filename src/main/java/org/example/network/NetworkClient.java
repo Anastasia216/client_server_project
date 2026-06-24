@@ -33,6 +33,10 @@ public class NetworkClient {
         return instance;
     }
 
+    private String myRole = "USER";
+    public String getMyRole() { return myRole; }
+    public void setMyRole(String myRole) { this.myRole = myRole; }
+
     public int getMyUserId() { return myUserId; }
     public void setMyUserId(int myUserId) { this.myUserId = myUserId; }
 

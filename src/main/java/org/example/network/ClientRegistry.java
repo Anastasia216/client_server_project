@@ -25,6 +25,10 @@ public class ClientRegistry {
     public static ClientHandler getHandler(int userId) {
         return activeClients.get(userId);
     }
+    public static int getOnlineCount() {
+        return activeClients.size();
+    }
+}
     public static void broadcastUserStatusChange(long userId, String status) {
         try {
             Message statusMsg = new Message(
